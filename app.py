@@ -2,6 +2,7 @@
 # IMPORTANT: All helper functions are defined BEFORE any Streamlit UI code
 # that calls them. Streamlit reruns the entire script top-to-bottom on each
 # interaction, so function definitions must precede their call sites.
+import os
 import queue
 import threading
 import time
@@ -17,7 +18,7 @@ from scraper.queue_manager import QueueManager
 from scraper.hybrid_scraper import HybridScraper
 from scraper.exporter import Exporter
 
-REDIS_URL = "redis://redis:6379"
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 
 
 # ===========================================================================
