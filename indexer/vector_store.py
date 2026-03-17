@@ -64,7 +64,7 @@ class VectorStore:
             return 0
 
         points = []
-        for i, chunk in enumerate(chunks):
+        for chunk in chunks:
             # Use hash of id string as integer point ID
             point_id = abs(hash(chunk["id"])) % (10**15)
             points.append(PointStruct(
