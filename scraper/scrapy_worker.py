@@ -17,6 +17,7 @@ class SinglePageSpider(scrapy.Spider):
         "LOG_ENABLED": False,
         "DOWNLOAD_TIMEOUT": 20,
         "DEPTH_LIMIT": 1,
+        "ROBOTSTXT_OBEY": False,
         "USER_AGENT": "Business-Scraper/1.0",
         "PLAYWRIGHT_LAUNCH_OPTIONS": {"headless": True},
         "DOWNLOAD_HANDLERS": {

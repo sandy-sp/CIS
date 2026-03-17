@@ -49,9 +49,17 @@ def _run_crawl(start_url: str, max_pages: int, rate_limit: float,
         snooper.crawl_delay = max(rate_limit, snooper.crawl_delay)
 
         seed_urls = snooper.get_seed_urls()
+        qm.update_meta(
+            has_llm_txt=str(snooper.has_llm_txt),
+            has_robots_txt=str(snooper.has_robots_txt),
+            seed_source=snooper.seed_source,
+            seed_count=str(len(seed_urls)),
+            pages_found=len(seed_urls),
+            pages_done=0,
+            total_words=0,
+        )
         for url in seed_urls:
             qm.enqueue(url)
-        qm.update_meta(pages_found=len(seed_urls), pages_done=0, total_words=0)
 
         scraper = HybridScraper(qm, snooper, max_pages=max_pages, cancel_flag=cancel_flag)
         async for result in scraper.crawl(start_url):
@@ -201,30 +209,21 @@ if st.session_state.pending_resume:
         _start_crawl(pr["url"], pr["max_pages"], pr["rate_limit"])
         st.session_state.pending_resume = None
 
-# --- Live crawl polling ---
-if st.session_state.crawl_running and st.session_state.result_queue:
-    if st.button("Cancel"):
-        st.session_state.cancel_flag.append(True)
+# --- Site info ---
+site_meta = {}
+if st.session_state.domain:
+    try:
+        _redis = redis.from_url(REDIS_URL, decode_responses=True)
+        site_meta = QueueManager(st.session_state.domain, redis_client=_redis).get_meta()
+    except Exception:
+        site_meta = {}
 
-    rq = st.session_state.result_queue
-    batch = 0
-    while batch < 10:
-        try:
-            result = rq.get_nowait()
-            if result is None:
-                st.session_state.crawl_running = False
-                _build_zip()
-                break
-            st.session_state.results.append(result)
-            _update_stats(result)
-            _append_log(result)
-            batch += 1
-        except queue.Empty:
-            break
-
-    if st.session_state.crawl_running:
-        time.sleep(0.3)
-        st.rerun()
+if site_meta:
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("LLM.txt", "Found" if site_meta.get("has_llm_txt") == "True" else "Not found")
+    m2.metric("Robots.txt", "Found" if site_meta.get("has_robots_txt") == "True" else "Not found")
+    m3.metric("Seed source", site_meta.get("seed_source", "discovery"))
+    m4.metric("Seed URLs", site_meta.get("seed_count", "0"))
 
 # --- Stats bar ---
 s = st.session_state.stats
@@ -250,3 +249,28 @@ if st.session_state.zip_bytes:
         file_name=f"{st.session_state.domain}-scraped.zip",
         mime="application/zip",
     )
+
+# --- Live crawl polling ---
+if st.session_state.crawl_running and st.session_state.result_queue:
+    if st.button("Cancel"):
+        st.session_state.cancel_flag.append(True)
+
+    rq = st.session_state.result_queue
+    batch = 0
+    while batch < 10:
+        try:
+            result = rq.get_nowait()
+            if result is None:
+                st.session_state.crawl_running = False
+                _build_zip()
+                st.rerun()
+            st.session_state.results.append(result)
+            _update_stats(result)
+            _append_log(result)
+            batch += 1
+        except queue.Empty:
+            break
+
+    if st.session_state.crawl_running:
+        time.sleep(0.3)
+        st.rerun()

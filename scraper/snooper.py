@@ -1,6 +1,7 @@
 # scraper/snooper.py
 import re
 import urllib.robotparser
+import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
 
 import requests
@@ -18,10 +19,13 @@ class Snooper:
         self.domain = re.sub(r"^www\.", "", parsed.netloc)
         self.base_url = f"{parsed.scheme}://{parsed.netloc}"
         self.crawl_delay = default_delay
+        self.has_llm_txt = False
+        self.has_robots_txt = False
+        self.seed_source = "discovery"
         self._rp = urllib.robotparser.RobotFileParser()
 
     def get_seed_urls(self) -> list[str]:
-        """Return URL list from llm.txt, or [root] if not found."""
+        """Return seed URLs from llm.txt, sitemap, or root discovery."""
         try:
             r = requests.get(
                 f"{self.base_url}/llm.txt",
@@ -29,11 +33,20 @@ class Snooper:
                 timeout=10,
             )
             if r.status_code == 200:
+                self.has_llm_txt = True
                 urls = [u.strip() for u in r.text.splitlines() if u.strip().startswith("http")]
                 if urls:
+                    self.seed_source = "llm.txt"
                     return urls
         except requests.RequestException:
             pass
+
+        sitemap_urls = self._fetch_sitemap_urls()
+        if sitemap_urls:
+            self.seed_source = "sitemap"
+            return sitemap_urls
+
+        self.seed_source = "discovery"
         return [f"{self.base_url}/"]
 
     def load_robots(self) -> None:
@@ -47,6 +60,7 @@ class Snooper:
                 timeout=10,
             )
             if r.status_code == 200:
+                self.has_robots_txt = True
                 self._rp.parse(r.text.splitlines())
             else:
                 # No robots.txt — allow everything, keep default delay
@@ -55,7 +69,7 @@ class Snooper:
             if delay:
                 self.crawl_delay = float(delay)
         except Exception:
-            pass
+            self._rp.parse([])  # allow all when robots.txt is unreachable
 
     def is_disallowed(self, url: str) -> bool:
         return not self._rp.can_fetch(self.USER_AGENT, url)
@@ -78,3 +92,64 @@ class Snooper:
             return False
         content = tag.get("content", "").lower()
         return directive in content
+
+    def _fetch_sitemap_urls(self) -> list[str]:
+        sitemap_roots = list(self._rp.site_maps() or [])
+        if not sitemap_roots:
+            for path in ("/sitemap.xml", "/sitemap_index.xml", "/sitemap"):
+                try:
+                    r = requests.get(
+                        f"{self.base_url}{path}",
+                        headers={"User-Agent": self.USER_AGENT},
+                        timeout=10,
+                    )
+                    text = r.text.lower()
+                    if r.status_code == 200 and ("<urlset" in text or "<sitemapindex" in text):
+                        sitemap_roots.append(f"{self.base_url}{path}")
+                        break
+                except requests.RequestException:
+                    pass
+
+        all_urls: list[str] = []
+        for sitemap_url in sitemap_roots:
+            all_urls.extend(self._parse_sitemap(sitemap_url))
+
+        same_domain_urls = [url for url in all_urls if not self.is_external(url)]
+        return list(dict.fromkeys(same_domain_urls))
+
+    def _parse_sitemap(self, url: str, depth: int = 0) -> list[str]:
+        if depth > 4:
+            return []
+
+        try:
+            r = requests.get(
+                url,
+                headers={"User-Agent": self.USER_AGENT},
+                timeout=15,
+            )
+            if r.status_code != 200:
+                return []
+
+            root = ET.fromstring(r.content)
+        except Exception:
+            return []
+
+        namespace = ""
+        if root.tag.startswith("{"):
+            namespace = root.tag[1:].split("}", 1)[0]
+
+        def _tag(name: str) -> str:
+            return f"{{{namespace}}}{name}" if namespace else name
+
+        urls: list[str] = []
+        for sitemap in root.findall(_tag("sitemap")):
+            loc = sitemap.find(_tag("loc"))
+            if loc is not None and loc.text:
+                urls.extend(self._parse_sitemap(loc.text.strip(), depth + 1))
+
+        for url_el in root.findall(_tag("url")):
+            loc = url_el.find(_tag("loc"))
+            if loc is not None and loc.text:
+                urls.append(loc.text.strip())
+
+        return urls
