@@ -1,5 +1,4 @@
 import pytest
-import tempfile
 from pathlib import Path
 from scraper.pipeline_db import PipelineDB
 

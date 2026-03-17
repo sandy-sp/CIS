@@ -339,3 +339,29 @@ async def test_pipeline_db_records_successful_page(fake_redis, snooper):
     mock_db_instance.upsert_scraped.assert_called_once()
     call_kwargs = mock_db_instance.upsert_scraped.call_args
     assert call_kwargs[1]["url"] == "https://example.com/about" or call_kwargs[0][0] == "https://example.com/about"
+
+
+@pytest.mark.asyncio
+async def test_skips_login_redirect_on_disallowed_scrapy_path(fake_redis, snooper):
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/members")
+    snooper.is_disallowed.return_value = True
+
+    login_page = PageResult(
+        url="https://example.com/members",
+        status="success",
+        title="Log in to access",
+        markdown="# Log in\n\nYou need to log in.",
+        engine_used="scrapy",
+    )
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine"), \
+         patch("scraper.hybrid_scraper.ScrapyEngine") as MockFallback:
+        mock_fallback = MagicMock()
+        mock_fallback.scrape.return_value = login_page
+        MockFallback.return_value = mock_fallback
+
+        scraper = HybridScraper(qm, snooper, max_pages=1)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    assert any(r.skip_reason == "login-redirect" for r in results)

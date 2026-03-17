@@ -133,6 +133,8 @@ class HybridScraper:
                 result.skip_reason = "scrapy (robots-disallowed)"
                 if self.snooper.has_noindex(result.raw_html):
                     return PageResult(url=url, status="skipped", skip_reason="noindex")
+                if self._is_login_redirect(result):
+                    return PageResult(url=url, status="skipped", skip_reason="login-redirect")
                 if not self.snooper.has_nofollow(result.raw_html):
                     self._enqueue_links(links, url)
                 return result
