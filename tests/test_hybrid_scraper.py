@@ -59,8 +59,7 @@ async def test_falls_back_to_scrapy_on_crawl4ai_failure(qm, snooper, failed_resu
                                  markdown="# About", engine_used="scrapy")
 
     with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
-         patch("scraper.hybrid_scraper.ScrapyEngine") as MockFallback, \
-         patch("scraper.hybrid_scraper.asyncio.get_event_loop"):
+         patch("scraper.hybrid_scraper.ScrapyEngine") as MockFallback:
         mock_primary = AsyncMock()
         mock_primary.scrape = AsyncMock(return_value=(failed_result, []))
         MockPrimary.return_value = mock_primary
@@ -128,4 +127,29 @@ async def test_respects_max_pages_limit(fake_redis, snooper):
         scraper = HybridScraper(qm, snooper, max_pages=3)
         results = [r async for r in scraper.crawl("https://example.com")]
 
-    assert len([r for r in results if r.status == "success"]) <= 3
+    assert len([r for r in results if r.status == "success"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_duplicate_content_yields_skipped(fake_redis, snooper):
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/page-a")
+    qm.enqueue("https://example.com/page-b")
+
+    # Both pages return the same markdown — second should be skipped as duplicate
+    # Use side_effect to return fresh PageResult objects so process() modifications don't bleed across calls
+    def _fresh_result(*_):
+        return (PageResult(url="x", status="success", markdown="# Same Content\n\nIdentical body."), [])
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine"):
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(side_effect=_fresh_result)
+        MockPrimary.return_value = mock_engine
+
+        scraper = HybridScraper(qm, snooper, max_pages=10)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    duplicates = [r for r in results if r.skip_reason == "duplicate-content"]
+    assert len(duplicates) >= 1
+    assert all(r.status == "skipped" for r in duplicates)

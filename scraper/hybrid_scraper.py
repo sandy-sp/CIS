@@ -10,9 +10,6 @@ from scraper.queue_manager import QueueManager
 from scraper.snooper import Snooper
 from scraper.page_processor import PageProcessor
 
-_MAX_DEPTH = 10
-
-
 class HybridScraper:
     """Async generator: Crawl4AI primary → Scrapy fallback per URL."""
 
@@ -28,6 +25,7 @@ class HybridScraper:
         self._pages_done = 0
 
     async def crawl(self, start_url: str) -> AsyncGenerator[PageResult, None]:
+        self.queue.enqueue(start_url)
         with ThreadPoolExecutor(max_workers=1) as pool:
             while True:
                 if self.cancel_flag:
@@ -49,6 +47,7 @@ class HybridScraper:
                     result = self._processor.process(result)
                     content_hash = self.queue.content_hash(result.markdown)
                     if self.queue.is_duplicate_content(content_hash):
+                        result.status = "skipped"
                         result.skip_reason = "duplicate-content"
                     else:
                         self.queue.add_content_hash(content_hash)
