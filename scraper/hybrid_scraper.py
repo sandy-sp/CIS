@@ -31,12 +31,15 @@ class HybridScraper:
         self.queue.enqueue(start_url)
         while True:
             if self.cancel_flag:
-                break
+                break  # cancelled — don't mark completed, user may want to resume
+
             if self._pages_done >= self.max_pages:
+                self.queue.mark_completed()  # hit the page cap — done
                 break
 
             url = self.queue.dequeue()
             if url is None:
+                self.queue.mark_completed()  # queue drained — done
                 break
 
             result = await self._scrape_url(url)
@@ -69,8 +72,6 @@ class HybridScraper:
 
             if self.snooper.crawl_delay > 0:
                 await asyncio.sleep(self.snooper.crawl_delay)
-
-        self.queue.mark_completed()
 
     async def _scrape_url(self, url: str) -> PageResult:
         # Pre-flight checks

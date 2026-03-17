@@ -89,7 +89,7 @@ class QueueManager:
         return self._r.hgetall(self._keys["meta"])
 
     def has_existing_state(self) -> bool:
-        """True if there is a crawl in progress (queue has items OR visited set is non-empty but not completed)."""
+        """True if there is a resumable crawl in progress (not yet completed and has visited URLs or queued items)."""
         if self._r.hget(self._keys["meta"], "completed") == "true":
             return False
         queue_len = self._r.llen(self._keys["queue"])

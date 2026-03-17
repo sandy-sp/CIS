@@ -127,6 +127,15 @@ def test_has_existing_state_true_when_visited_but_not_completed(qm):
     assert qm.has_existing_state()
 
 
+def test_has_existing_state_false_when_completed_with_visited(qm):
+    qm.enqueue("https://example.com/")
+    qm.dequeue()
+    qm.mark_visited("https://example.com/")
+    # visited is non-empty but crawl is complete
+    qm.mark_completed()
+    assert not qm.has_existing_state()
+
+
 # --- URL fragment dedup ---
 
 def test_normalize_strips_fragment(qm):
