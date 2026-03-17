@@ -68,6 +68,9 @@ class HybridScraper:
             )
             self.queue.log(self._format_log(result))
 
+            if result.status == "success":
+                self.queue.save_result(result)   # persist for resume recovery
+
             yield result
 
             if self.snooper.crawl_delay > 0:

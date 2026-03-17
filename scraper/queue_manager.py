@@ -23,6 +23,7 @@ class QueueManager:
             "external": f"{domain}:external",
             "log": f"{domain}:log",
             "meta": f"{domain}:meta",
+            "results": f"{domain}:results",
         }
 
     def enqueue(self, url: str) -> bool:
@@ -99,6 +100,41 @@ class QueueManager:
     def mark_completed(self) -> None:
         """Mark crawl as fully completed so has_existing_state() returns False."""
         self._r.hset(self._keys["meta"], "completed", "true")
+
+    def save_result(self, result) -> None:
+        """Persist a successful PageResult to Redis as JSON (for resume recovery)."""
+        import json
+        data = {
+            "url": result.url,
+            "canonical_url": result.canonical_url,
+            "title": result.title,
+            "description": result.description,
+            "language": result.language,
+            "headings": result.headings,
+            "markdown": result.markdown,
+            "page_type": result.page_type,
+            "word_count": result.word_count,
+            "scraped_at": result.scraped_at.isoformat(),
+            "engine_used": result.engine_used,
+            "status": result.status,
+            "skip_reason": result.skip_reason,
+        }
+        self._r.hset(self._keys["results"], result.url, json.dumps(data))
+
+    def load_results(self) -> list:
+        """Load all persisted PageResults from Redis. Returns list of PageResult."""
+        import json
+        from datetime import datetime, timezone
+        from models import PageResult
+        raw = self._r.hvals(self._keys["results"])
+        results = []
+        for item in raw:
+            data = json.loads(item)
+            data["scraped_at"] = datetime.fromisoformat(data["scraped_at"])
+            # raw_html is not persisted (too large) — set to empty string
+            data["raw_html"] = ""
+            results.append(PageResult(**data))
+        return results
 
     def flush(self) -> None:
         for key in self._keys.values():

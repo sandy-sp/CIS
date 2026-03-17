@@ -127,12 +127,14 @@ def _build_zip() -> None:
     try:
         redis_client = redis.from_url(REDIS_URL, decode_responses=True)
         qm = QueueManager(st.session_state.domain, redis_client=redis_client)
+        # Load persisted results from Redis (includes results from resumed sessions)
+        all_results = qm.load_results()
         external = qm.get_external_links()
         log_lines = qm.get_log_lines(500)
         duration = time.time() - st.session_state.get("crawl_start_time", time.time())
         exporter = Exporter(st.session_state.domain)
         st.session_state.zip_bytes = exporter.build_zip(
-            st.session_state.results, external,
+            all_results, external,
             crawl_duration_seconds=duration, log_lines=log_lines,
         )
     except Exception as exc:

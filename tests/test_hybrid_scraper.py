@@ -156,6 +156,28 @@ async def test_duplicate_content_yields_skipped(fake_redis, snooper):
 
 
 @pytest.mark.asyncio
+async def test_successful_result_persisted_to_redis(fake_redis, snooper):
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/about")
+
+    success = PageResult(url="https://example.com/about", status="success",
+                         markdown="# About\n\nContent.", engine_used="crawl4ai")
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine"):
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(return_value=(success, []))
+        MockPrimary.return_value = mock_engine
+
+        scraper = HybridScraper(qm, snooper, max_pages=1)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    persisted = qm.load_results()
+    assert len(persisted) >= 1
+    assert any(r.url == "https://example.com/about" for r in persisted)
+
+
+@pytest.mark.asyncio
 async def test_dedup_fires_for_same_body_different_urls(fake_redis, snooper):
     """BUG-A: Two pages with the same body content but different URLs must be deduplicated.
 

@@ -156,3 +156,25 @@ def test_enqueue_deduplicates_fragment_variants(qm):
     qm.enqueue("https://example.com/page#section2")
     assert qm.dequeue() == "https://example.com/page"
     assert qm.dequeue() is None  # second was a duplicate after fragment stripping
+
+
+# --- BUG-B: persist PageResult to Redis ---
+
+def test_save_and_load_result(qm, sample_page_result):
+    qm.save_result(sample_page_result)
+    loaded = qm.load_results()
+    assert len(loaded) == 1
+    assert loaded[0].url == sample_page_result.url
+    assert loaded[0].markdown == sample_page_result.markdown
+    assert loaded[0].word_count == sample_page_result.word_count
+    assert loaded[0].raw_html == ""  # not persisted
+
+
+def test_load_results_empty(qm):
+    assert qm.load_results() == []
+
+
+def test_flush_clears_results(qm, sample_page_result):
+    qm.save_result(sample_page_result)
+    qm.flush()
+    assert qm.load_results() == []
