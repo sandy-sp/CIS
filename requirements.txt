@@ -1,6 +1,7 @@
 streamlit>=1.32.0
 crawl4ai>=0.3.5
 requests>=2.31.0
+urllib3>=2.0.0,<3
 scrapy>=2.11.0
 scrapy-playwright>=0.0.34
 playwright>=1.42.0
@@ -9,3 +10,4 @@ beautifulsoup4>=4.12.0
 html2text>=2024.2.26
 pyyaml>=6.0.1
 responses>=0.25.0
+trafilatura>=1.12.0
