@@ -98,3 +98,52 @@ def test_flush_clears_all_keys(qm):
     qm.flush()
     assert not qm.has_existing_state()
     assert not qm.is_visited("https://example.com/about")
+
+
+# --- BUG-C: has_existing_state after completed crawl ---
+
+def test_has_existing_state_false_when_completed(qm):
+    """After mark_completed(), has_existing_state() returns False even if enqueued set is non-empty."""
+    qm.enqueue("https://example.com/page")
+    # Drain the queue (simulate crawl finishing)
+    qm.dequeue()
+    # enqueued set still has the URL, but crawl is done
+    qm.mark_completed()
+    assert not qm.has_existing_state()
+
+
+def test_has_existing_state_true_when_queue_has_items(qm):
+    """has_existing_state() returns True when there are items waiting in the queue."""
+    qm.enqueue("https://example.com/page")
+    assert qm.has_existing_state()
+
+
+def test_has_existing_state_true_when_visited_but_not_completed(qm):
+    """has_existing_state() returns True when visited set is non-empty and not completed (mid-crawl)."""
+    qm.enqueue("https://example.com/page")
+    url = qm.dequeue()
+    qm.mark_visited(url)
+    # Not marked completed yet — should still show as resumable
+    assert qm.has_existing_state()
+
+
+# --- URL fragment dedup ---
+
+def test_normalize_strips_fragment(qm):
+    """normalize() should strip #fragment from URLs."""
+    result = qm.normalize("https://example.com/page#section")
+    assert result == "https://example.com/page"
+
+
+def test_normalize_strips_fragment_with_query(qm):
+    """normalize() strips fragment even when query params are present."""
+    result = qm.normalize("https://example.com/page?a=1#section")
+    assert result == "https://example.com/page?a=1"
+
+
+def test_enqueue_deduplicates_fragment_variants(qm):
+    """Enqueueing page#section1 and page#section2 should result in only 1 item in queue."""
+    qm.enqueue("https://example.com/page#section1")
+    qm.enqueue("https://example.com/page#section2")
+    assert qm.dequeue() == "https://example.com/page"
+    assert qm.dequeue() is None  # second was a duplicate after fragment stripping

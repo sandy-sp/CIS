@@ -46,13 +46,13 @@ class HybridScraper:
                 continue
 
             if result.status == "success":
-                result = self._processor.process(result)
-                content_hash = self.queue.content_hash(result.markdown)
+                content_hash = self.queue.content_hash(result.markdown)   # hash BEFORE YAML injection
                 if self.queue.is_duplicate_content(content_hash):
                     result.status = "skipped"
                     result.skip_reason = "duplicate-content"
                 else:
                     self.queue.add_content_hash(content_hash)
+                    result = self._processor.process(result)              # process only non-duplicates
 
             # Mark as actually scraped (two-set dedup: enqueued ≠ visited)
             if result.status in ("success", "failed"):
@@ -69,6 +69,8 @@ class HybridScraper:
 
             if self.snooper.crawl_delay > 0:
                 await asyncio.sleep(self.snooper.crawl_delay)
+
+        self.queue.mark_completed()
 
     async def _scrape_url(self, url: str) -> PageResult:
         # Pre-flight checks

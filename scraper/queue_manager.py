@@ -1,7 +1,7 @@
 # scraper/queue_manager.py
 import hashlib
 import re
-from urllib.parse import urlparse, urlencode, parse_qs, parse_qsl
+from urllib.parse import urldefrag, urlparse, urlencode, parse_qs, parse_qsl
 
 import redis as redis_lib
 
@@ -89,14 +89,24 @@ class QueueManager:
         return self._r.hgetall(self._keys["meta"])
 
     def has_existing_state(self) -> bool:
-        return bool(self._r.llen(self._keys["queue"]) or self._r.scard(self._keys["enqueued"]))
+        """True if there is a crawl in progress (queue has items OR visited set is non-empty but not completed)."""
+        if self._r.hget(self._keys["meta"], "completed") == "true":
+            return False
+        queue_len = self._r.llen(self._keys["queue"])
+        visited_count = self._r.scard(self._keys["visited"])
+        return bool(queue_len or visited_count)
+
+    def mark_completed(self) -> None:
+        """Mark crawl as fully completed so has_existing_state() returns False."""
+        self._r.hset(self._keys["meta"], "completed", "true")
 
     def flush(self) -> None:
         for key in self._keys.values():
             self._r.delete(key)
 
     def normalize(self, url: str) -> str:
-        parsed = urlparse(url.strip())
+        url, _ = urldefrag(url.strip())   # strip #fragment first
+        parsed = urlparse(url)
         scheme = parsed.scheme.lower()
         netloc = parsed.netloc.lower()
         path = parsed.path.rstrip("/") or "/"

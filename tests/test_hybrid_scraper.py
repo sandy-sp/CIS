@@ -153,3 +153,38 @@ async def test_duplicate_content_yields_skipped(fake_redis, snooper):
     duplicates = [r for r in results if r.skip_reason == "duplicate-content"]
     assert len(duplicates) >= 1
     assert all(r.status == "skipped" for r in duplicates)
+
+
+@pytest.mark.asyncio
+async def test_dedup_fires_for_same_body_different_urls(fake_redis, snooper):
+    """BUG-A: Two pages with the same body content but different URLs must be deduplicated.
+
+    If the hash is computed AFTER YAML injection, each page gets a unique frontmatter
+    (different url + scraped_at) → hashes differ → dedup never fires.
+    This test verifies the hash is computed BEFORE process() injects frontmatter.
+    """
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/page-a")
+    qm.enqueue("https://example.com/page-b")
+
+    identical_body = "# Company Info\n\nWe are a great company with lots of experience."
+
+    def _make_result(url, *_):
+        # Each call gets a fresh result with the SAME body but a DIFFERENT url
+        return (PageResult(url=url, status="success", markdown=identical_body, engine_used="crawl4ai"), [])
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine"):
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(side_effect=_make_result)
+        MockPrimary.return_value = mock_engine
+
+        scraper = HybridScraper(qm, snooper, max_pages=10)
+        # Pass each URL individually so side_effect receives the correct url arg
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    successes = [r for r in results if r.status == "success"]
+    duplicates = [r for r in results if r.skip_reason == "duplicate-content"]
+    # Exactly one success and at least one duplicate-content skip
+    assert len(successes) == 1, f"Expected 1 success, got {len(successes)}: {[r.url for r in successes]}"
+    assert len(duplicates) >= 1, f"Expected >=1 duplicate skip, got {len(duplicates)}"
