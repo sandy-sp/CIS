@@ -1,0 +1,10 @@
+streamlit>=1.32.0
+crawl4ai>=0.3.5
+scrapy>=2.11.0
+scrapy-playwright>=0.0.34
+playwright>=1.42.0
+redis>=5.0.0
+beautifulsoup4>=4.12.0
+html2text>=2024.2.26
+pyyaml>=6.0.1
+responses>=0.25.0
