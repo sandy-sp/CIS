@@ -6,11 +6,8 @@ from pathlib import Path
 
 from indexer.embedder import Embedder
 from indexer.pipeline import IndexerPipeline
-from scraper.queue_manager import QueueManager
-import redis
 
 
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 
 
