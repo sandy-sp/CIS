@@ -20,6 +20,7 @@ class Exporter:
         pages: list[PageResult],
         external_links: dict[str, list[str]],
         crawl_duration_seconds: float = 0.0,
+        log_lines: list[str] | None = None,
     ) -> bytes:
         buf = io.BytesIO()
         successful = [p for p in pages if p.status == "success"]
@@ -62,6 +63,10 @@ class Exporter:
                 f"{prefix}/crawl_report.md",
                 self._build_report(successful, failed, skipped, crawl_duration_seconds),
             )
+
+            # crawl.log
+            if log_lines:
+                zf.writestr(f"{prefix}/crawl.log", "\n".join(log_lines))
 
         return buf.getvalue()
 

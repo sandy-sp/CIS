@@ -1,5 +1,6 @@
 # scraper/queue_manager.py
 import hashlib
+import re
 from urllib.parse import urlparse, urlencode, parse_qs, parse_qsl
 
 import redis as redis_lib
@@ -61,7 +62,7 @@ class QueueManager:
         self._r.sadd(self._keys["content_hashes"], hash_value)
 
     def save_external(self, url: str) -> None:
-        domain = urlparse(url).netloc.lstrip("www.")
+        domain = re.sub(r"^www\.", "", urlparse(url).netloc)
         self._r.hset(self._keys["external"], f"{domain}::{url}", "1")
 
     def get_external_links(self) -> dict[str, list[str]]:

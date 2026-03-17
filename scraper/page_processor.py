@@ -11,8 +11,8 @@ from models import PageResult
 # page_type patterns: (regex, page_type) in priority order
 _PAGE_TYPE_PATTERNS = [
     (r"^/$", "homepage"),
-    (r"/(about|team|who-we-are|our-story|company)|our-team", "about"),
-    (r"/(service|solution|what-we-do|offering|product)|our-solution", "services"),
+    (r"/(about|team|who-we-are|our-story|company|our-team)", "about"),
+    (r"/(service|solution|what-we-do|offering|product|our-solution)", "services"),
     (r"/(blog|news|insight|article|post|update)", "blog"),
     (r"/(case-stud|work|portfolio|project|client)", "case-study"),
     (r"/(contact|get-in-touch|reach-us)", "contact"),

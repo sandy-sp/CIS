@@ -78,6 +78,7 @@ def _start_crawl(url: str, max_pages: int, rate_limit: float) -> None:
     }
     st.session_state.cancel_flag = []
     st.session_state.zip_bytes = None
+    st.session_state.crawl_start_time = time.time()
     st.session_state.domain = urlparse(url).netloc.lstrip("www.")
 
     result_q: queue.Queue = queue.Queue()
@@ -119,8 +120,13 @@ def _build_zip() -> None:
         redis_client = redis.from_url(REDIS_URL, decode_responses=True)
         qm = QueueManager(st.session_state.domain, redis_client=redis_client)
         external = qm.get_external_links()
+        log_lines = qm.get_log_lines(500)
+        duration = time.time() - st.session_state.get("crawl_start_time", time.time())
         exporter = Exporter(st.session_state.domain)
-        st.session_state.zip_bytes = exporter.build_zip(st.session_state.results, external)
+        st.session_state.zip_bytes = exporter.build_zip(
+            st.session_state.results, external,
+            crawl_duration_seconds=duration, log_lines=log_lines,
+        )
     except Exception as exc:
         st.error(f"Failed to build zip: {exc}")
 

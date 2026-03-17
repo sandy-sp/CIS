@@ -15,7 +15,7 @@ class Snooper:
     def __init__(self, start_url: str, default_delay: float = 1.0):
         parsed = urlparse(start_url)
         self.scheme = parsed.scheme
-        self.domain = parsed.netloc.lstrip("www.")
+        self.domain = re.sub(r"^www\.", "", parsed.netloc)
         self.base_url = f"{parsed.scheme}://{parsed.netloc}"
         self.crawl_delay = default_delay
         self._rp = urllib.robotparser.RobotFileParser()
@@ -62,7 +62,7 @@ class Snooper:
 
     def is_external(self, url: str) -> bool:
         parsed = urlparse(url)
-        url_domain = parsed.netloc.lstrip("www.")
+        url_domain = re.sub(r"^www\.", "", parsed.netloc)
         return url_domain != self.domain
 
     def has_noindex(self, html: str) -> bool:
