@@ -30,9 +30,16 @@ class Exporter:
         prefix = f"{self.domain}-{date_str}"
 
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Individual pages
+            # Individual pages — track slug counts to avoid silent overwrite on collision
+            slug_counts: dict[str, int] = {}
             for page in successful:
-                slug = self.slugify(page.url)
+                base_slug = self.slugify(page.url)
+                if base_slug in slug_counts:
+                    slug_counts[base_slug] += 1
+                    slug = f"{base_slug}-{slug_counts[base_slug]}"
+                else:
+                    slug_counts[base_slug] = 0
+                    slug = base_slug
                 zf.writestr(f"{prefix}/individual_pages/{slug}.md", page.markdown)
 
             # master_site.md (sorted by page_type)
@@ -41,7 +48,10 @@ class Exporter:
                 key=lambda p: (_PAGE_TYPE_ORDER.index(p.page_type)
                                if p.page_type in _PAGE_TYPE_ORDER else 99, p.url)
             )
-            master = "\n\n---\n\n".join(p.markdown for p in sorted_pages)
+            if sorted_pages:
+                master = "\n\n---\n\n".join(p.markdown for p in sorted_pages)
+            else:
+                master = f"# {self.domain}\n\nNo pages were successfully scraped.\n"
             zf.writestr(f"{prefix}/master_site.md", master)
 
             # external_links.md

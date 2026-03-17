@@ -76,8 +76,8 @@ def test_zip_contains_crawl_report(pages, external_links):
     zip_bytes = exporter.build_zip(pages, external_links)
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         content = zf.read([n for n in zf.namelist() if "crawl_report" in n][0]).decode()
-    assert "2" in content   # 2 successful pages
-    assert "1" in content   # 1 failed page
+    assert "| Pages scraped | 2 |" in content
+    assert "| Pages failed | 1 |" in content
 
 
 def test_slugify_url(pages, external_links):
@@ -94,3 +94,20 @@ def test_master_site_ordered_by_page_type(pages, external_links):
         content = zf.read([n for n in zf.namelist() if "master_site" in n][0]).decode()
     # homepage should appear before services in master_site.md
     assert content.index("homepage") < content.index("services")
+
+
+def test_crawl_report_includes_skip_reasons():
+    pages_with_skipped = [
+        PageResult(url="https://example.com/a", status="success", markdown="x",
+                   page_type="other", engine_used="crawl4ai"),
+        PageResult(url="https://example.com/b", status="skipped", skip_reason="robots disallowed"),
+        PageResult(url="https://example.com/c", status="skipped", skip_reason="robots disallowed"),
+        PageResult(url="https://example.com/d", status="skipped", skip_reason="noindex"),
+    ]
+    exporter = Exporter("example.com")
+    zip_bytes = exporter.build_zip(pages_with_skipped, {})
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        content = zf.read([n for n in zf.namelist() if "crawl_report" in n][0]).decode()
+    assert "| Pages skipped | 3 |" in content
+    assert "robots disallowed: 2" in content
+    assert "noindex: 1" in content
