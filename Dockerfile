@@ -2,6 +2,7 @@ FROM python:3.11-slim
 
 # System dependencies for Playwright/Chromium
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     libnss3 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -16,6 +17,9 @@ RUN apt-get update && apt-get install -y \
     libpango-1.0-0 \
     libcairo2 \
     && rm -rf /var/lib/apt/lists/*
+
+ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 WORKDIR /app
 
