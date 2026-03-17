@@ -32,6 +32,10 @@ class SinglePageSpider(scrapy.Spider):
         self.start_urls = [url]
         self.result_container = result_container
 
+    def start_requests(self):
+        for url in self.start_urls:
+            yield scrapy.Request(url, meta={"playwright": True}, callback=self.parse)
+
     def parse(self, response):
         soup = BeautifulSoup(response.text, "html.parser")
 

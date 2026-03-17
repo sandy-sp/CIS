@@ -210,3 +210,80 @@ async def test_dedup_fires_for_same_body_different_urls(fake_redis, snooper):
     # Exactly one success and at least one duplicate-content skip
     assert len(successes) == 1, f"Expected 1 success, got {len(successes)}: {[r.url for r in successes]}"
     assert len(duplicates) >= 1, f"Expected >=1 duplicate skip, got {len(duplicates)}"
+
+
+@pytest.mark.asyncio
+async def test_retries_on_failure_then_succeeds(fake_redis, snooper):
+    """Verifies that a page that fails once is retried and succeeds on second attempt."""
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/flaky")
+
+    fail = PageResult(url="https://example.com/flaky", status="failed", skip_reason="timeout")
+    ok = PageResult(url="https://example.com/flaky", status="success", markdown="# Flaky\n\nContent.", engine_used="crawl4ai")
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine"), \
+         patch("asyncio.sleep"):  # don't actually wait
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(side_effect=[(fail, []), (ok, [])])
+        MockPrimary.return_value = mock_engine
+
+        scraper = HybridScraper(qm, snooper, max_pages=1)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    assert any(r.status == "success" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_gives_up_after_3_attempts(fake_redis, snooper):
+    """Verifies that a page that always fails is marked failed after 3 attempts."""
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/broken")
+
+    fail = PageResult(url="https://example.com/broken", status="failed", skip_reason="timeout")
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine") as MockFallback, \
+         patch("asyncio.sleep"):
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(return_value=(fail, []))
+        MockPrimary.return_value = mock_engine
+
+        mock_fallback = MagicMock()
+        mock_fallback.scrape.return_value = PageResult(url="x", status="failed", skip_reason="scrapy fail")
+        MockFallback.return_value = mock_fallback
+
+        scraper = HybridScraper(qm, snooper, max_pages=1)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    assert any(r.status == "failed" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_skips_noise_urls(fake_redis, snooper):
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    for url in [
+        "https://example.com/privacy-policy",
+        "https://example.com/terms-of-service",
+        "https://example.com/cookie-policy",
+        "https://example.com/legal/notice",
+    ]:
+        qm.enqueue(url)
+
+    # crawl() also enqueues start_url ("https://example.com/") which is NOT a noise URL,
+    # so we need a working async primary engine for that one URL.
+    start_url_result = PageResult(url="https://example.com/", status="success",
+                                  markdown="# Home", engine_used="crawl4ai")
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine"):
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(return_value=(start_url_result, []))
+        MockPrimary.return_value = mock_engine
+
+        scraper = HybridScraper(qm, snooper, max_pages=10)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    noise_results = [r for r in results if r.url != "https://example.com/"]
+    assert all(r.status == "skipped" for r in noise_results)
+    assert all(r.skip_reason == "noise-url" for r in noise_results)

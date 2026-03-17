@@ -1,5 +1,6 @@
 # scraper/hybrid_scraper.py
 import asyncio
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import AsyncGenerator
 from urllib.parse import urldefrag, urljoin, urlparse
@@ -12,6 +13,12 @@ from scraper.scrapy_engine import ScrapyEngine
 from scraper.queue_manager import QueueManager
 from scraper.snooper import Snooper
 from scraper.page_processor import PageProcessor
+
+_NOISE_URL_PATTERNS = re.compile(
+    r"/(privacy|terms|cookie|legal|sitemap|gdpr|disclaimer|imprint|impressum)",
+    re.IGNORECASE,
+)
+
 
 class HybridScraper:
     """Async generator: Crawl4AI primary → Scrapy fallback per URL."""
@@ -42,7 +49,7 @@ class HybridScraper:
                 self.queue.mark_completed()  # queue drained — done
                 break
 
-            result = await self._scrape_url(url)
+            result = await self._scrape_with_retry(url)
 
             # External URLs are saved to Redis but NOT yielded as results
             if result.status == "skipped" and result.skip_reason == "external url":
@@ -76,11 +83,26 @@ class HybridScraper:
             if self.snooper.crawl_delay > 0:
                 await asyncio.sleep(self.snooper.crawl_delay)
 
+    async def _scrape_with_retry(self, url: str) -> PageResult:
+        """Scrape URL with up to 3 attempts, exponential backoff on failure (2/4/8s)."""
+        delays = [2, 4, 8]
+        result = PageResult(url=url, status="failed", skip_reason="not attempted")
+        for attempt, delay in enumerate(delays, start=1):
+            result = await self._scrape_url(url)
+            if result.status != "failed":
+                return result
+            if attempt < len(delays):
+                await asyncio.sleep(delay)
+        return result
+
     async def _scrape_url(self, url: str) -> PageResult:
         # Pre-flight checks
         if self.snooper.is_external(url):
             self.queue.save_external(url)
             return PageResult(url=url, status="skipped", skip_reason="external url")
+        parsed_path = urlparse(url).path
+        if _NOISE_URL_PATTERNS.search(parsed_path):
+            return PageResult(url=url, status="skipped", skip_reason="noise-url")
         if self.snooper.is_disallowed(url):
             result, links = await self._run_scrapy(url)
             if result.status == "success":
