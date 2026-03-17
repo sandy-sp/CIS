@@ -4,7 +4,6 @@ import streamlit as st
 from pathlib import Path
 
 from processor.pipeline import Pipeline
-from scraper.pipeline_db import PipelineDB
 
 
 def clean_page() -> None:

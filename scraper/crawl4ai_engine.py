@@ -2,6 +2,7 @@
 import asyncio
 
 from crawl4ai import AsyncWebCrawler, CacheMode
+from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
@@ -26,19 +27,22 @@ class Crawl4AIEngine:
         links: list[str] = []
 
         try:
-            async with AsyncWebCrawler(
+            browser_config = BrowserConfig(
                 user_agent=self.USER_AGENT,
                 headless=True,
                 verbose=False,
-            ) as crawler:
+            )
+            run_config = CrawlerRunConfig(
+                cache_mode=CacheMode.DISABLED,
+                word_count_threshold=_WORD_COUNT_THRESHOLD,
+                markdown_generator=DefaultMarkdownGenerator(
+                    content_filter=PruningContentFilter(),
+                    options={"fit_markdown": True},
+                ),
+            )
+            async with AsyncWebCrawler(config=browser_config) as crawler:
                 crawl_result = await asyncio.wait_for(
-                    crawler.arun(
-                        url=url,
-                        cache_mode=CacheMode.DISABLED,
-                        word_count_threshold=_WORD_COUNT_THRESHOLD,
-                        content_filter=PruningContentFilter(),
-                        markdown_generator=DefaultMarkdownGenerator(options={"fit_markdown": True}),
-                    ),
+                    crawler.arun(url=url, config=run_config),
                     timeout=_SCRAPE_TIMEOUT,
                 )
 
