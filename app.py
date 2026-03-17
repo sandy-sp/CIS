@@ -61,8 +61,13 @@ def _run_crawl(start_url: str, max_pages: int, rate_limit: float,
     asyncio.run(_crawl())
 
 
-def _start_crawl(url: str, max_pages: int, rate_limit: float, fresh: bool = True) -> None:
-    """Reset session state and launch background crawl thread."""
+def _start_crawl(url: str, max_pages: int, rate_limit: float) -> None:
+    """Reset session state and launch background crawl thread.
+
+    Note: resume vs. fresh-start is handled before calling this function (the
+    caller flushes Redis on fresh start). This function always resets in-memory
+    session state and starts a new thread polling from whatever is in the queue.
+    """
     st.session_state.crawl_running = True
     st.session_state.results = []
     st.session_state.log_lines = []
@@ -155,22 +160,25 @@ with st.form("crawl_form"):
     submitted = st.form_submit_button("Start Crawl")
 
 # --- Handle form submission (check for existing crawl state) ---
-if submitted and url_input:
+if submitted and url_input and not st.session_state.crawl_running:
     parsed = urlparse(url_input)
-    domain = parsed.netloc.lstrip("www.")
-    try:
-        _redis = redis.from_url(REDIS_URL, decode_responses=True)
-        qm_check = QueueManager(domain, redis_client=_redis)
-        if qm_check.has_existing_state():
-            st.session_state.pending_resume = {
-                "url": url_input, "domain": domain,
-                "max_pages": max_pages, "rate_limit": rate_limit,
-            }
-        else:
-            st.session_state.pending_resume = None
+    if not parsed.scheme.startswith("http") or not parsed.netloc:
+        st.error("Please enter a full URL starting with https:// (e.g. https://example.com)")
+    else:
+        domain = parsed.netloc.lstrip("www.")
+        try:
+            _redis = redis.from_url(REDIS_URL, decode_responses=True)
+            qm_check = QueueManager(domain, redis_client=_redis)
+            if qm_check.has_existing_state():
+                st.session_state.pending_resume = {
+                    "url": url_input, "domain": domain,
+                    "max_pages": max_pages, "rate_limit": rate_limit,
+                }
+            else:
+                st.session_state.pending_resume = None
+                _start_crawl(url_input, int(max_pages), rate_limit)
+        except Exception:
             _start_crawl(url_input, int(max_pages), rate_limit)
-    except Exception:
-        _start_crawl(url_input, int(max_pages), rate_limit)
 
 # --- Resume prompt ---
 if st.session_state.pending_resume:
@@ -178,12 +186,12 @@ if st.session_state.pending_resume:
     st.info(f"Existing crawl found for **{pr['domain']}**. Resume or start fresh?")
     col_a, col_b = st.columns(2)
     if col_a.button("Resume"):
-        _start_crawl(pr["url"], pr["max_pages"], pr["rate_limit"], fresh=False)
+        _start_crawl(pr["url"], pr["max_pages"], pr["rate_limit"])
         st.session_state.pending_resume = None
     if col_b.button("Start Fresh"):
         _redis = redis.from_url(REDIS_URL, decode_responses=True)
         QueueManager(pr["domain"], redis_client=_redis).flush()
-        _start_crawl(pr["url"], pr["max_pages"], pr["rate_limit"], fresh=True)
+        _start_crawl(pr["url"], pr["max_pages"], pr["rate_limit"])
         st.session_state.pending_resume = None
 
 # --- Live crawl polling ---
