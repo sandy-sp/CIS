@@ -1,4 +1,5 @@
 # tests/test_crawl4ai_engine.py
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from scraper.crawl4ai_engine import Crawl4AIEngine
@@ -56,7 +57,7 @@ async def test_scrape_failure_returns_failed_result(engine):
         result, links = await engine.scrape("https://example.com/broken")
 
     assert result.status == "failed"
-    assert "crawl4ai error" in result.skip_reason
+    assert result.skip_reason == "crawl4ai error: Connection refused"
     assert links == []
 
 
@@ -107,3 +108,18 @@ async def test_scrape_extracts_internal_links_only(engine):
     assert "https://example.com/about" in links
     assert "https://example.com/services" in links
     assert "https://linkedin.com/company/example" not in links
+
+
+@pytest.mark.asyncio
+async def test_scrape_timeout_returns_failed(engine):
+    with patch("scraper.crawl4ai_engine.AsyncWebCrawler") as MockCrawler:
+        mock_crawler = AsyncMock()
+        mock_crawler.arun = AsyncMock(side_effect=asyncio.TimeoutError())
+        MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+        MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        result, links = await engine.scrape("https://example.com/slow")
+
+    assert result.status == "failed"
+    assert result.skip_reason == "crawl4ai timeout"
+    assert links == []

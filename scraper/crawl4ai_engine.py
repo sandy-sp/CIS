@@ -8,6 +8,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from models import PageResult
 
 _SCRAPE_TIMEOUT = 30  # seconds
+_WORD_COUNT_THRESHOLD = 50  # pages with fewer words are likely nav/boilerplate
 
 
 class Crawl4AIEngine:
@@ -34,7 +35,7 @@ class Crawl4AIEngine:
                     crawler.arun(
                         url=url,
                         cache_mode=CacheMode.DISABLED,
-                        word_count_threshold=50,
+                        word_count_threshold=_WORD_COUNT_THRESHOLD,
                         content_filter=PruningContentFilter(),
                         markdown_generator=DefaultMarkdownGenerator(options={"fit_markdown": True}),
                     ),
