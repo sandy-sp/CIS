@@ -13,9 +13,15 @@ from scraper.scrapy_engine import ScrapyEngine
 from scraper.queue_manager import QueueManager
 from scraper.snooper import Snooper
 from scraper.page_processor import PageProcessor
+from scraper.pipeline_db import PipelineDB
 
 _NOISE_URL_PATTERNS = re.compile(
     r"/(privacy|terms|cookie|legal|sitemap|gdpr|disclaimer|imprint|impressum)",
+    re.IGNORECASE,
+)
+
+_LOGIN_PATTERNS = re.compile(
+    r"\b(sign\s*in|log\s*in|login|sign\s*up|create\s+account|please\s+authenticate)\b",
     re.IGNORECASE,
 )
 
@@ -33,6 +39,17 @@ class HybridScraper:
         self._primary = Crawl4AIEngine()
         self._fallback = ScrapyEngine()
         self._pages_done = 0
+        self._pipeline_db = PipelineDB()
+
+    def _is_login_redirect(self, result: PageResult) -> bool:
+        """True if the page looks like a login wall (200 OK but requires auth)."""
+        title = result.title.lower() if result.title else ""
+        # Check title first (fast path)
+        if _LOGIN_PATTERNS.search(title):
+            return True
+        # Check first 500 chars of markdown (avoid scanning whole document)
+        snippet = (result.markdown or "")[:500]
+        return bool(_LOGIN_PATTERNS.search(snippet))
 
     async def crawl(self, start_url: str) -> AsyncGenerator[PageResult, None]:
         self.queue.enqueue(start_url)
@@ -77,6 +94,13 @@ class HybridScraper:
 
             if result.status == "success":
                 self.queue.save_result(result)   # persist for resume recovery
+                self._pipeline_db.upsert_scraped(
+                    url=result.url,
+                    domain=self.queue.domain,
+                    page_type=result.page_type,
+                    word_count=result.word_count,
+                    scraped_at=result.scraped_at.isoformat(),
+                )
 
             yield result
 
@@ -127,6 +151,8 @@ class HybridScraper:
         if result.status == "success":
             if self.snooper.has_noindex(result.raw_html):
                 return PageResult(url=url, status="skipped", skip_reason="noindex")
+            if self._is_login_redirect(result):
+                return PageResult(url=url, status="skipped", skip_reason="login-redirect")
             if not self.snooper.has_nofollow(result.raw_html):
                 self._enqueue_links(links, url)
             return result
@@ -136,6 +162,8 @@ class HybridScraper:
         if fallback.status == "success":
             if self.snooper.has_noindex(fallback.raw_html):
                 return PageResult(url=url, status="skipped", skip_reason="noindex")
+            if self._is_login_redirect(fallback):
+                return PageResult(url=url, status="skipped", skip_reason="login-redirect")
             if not self.snooper.has_nofollow(fallback.raw_html):
                 self._enqueue_links(fallback_links, url)
             return fallback

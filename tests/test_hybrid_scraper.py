@@ -8,6 +8,7 @@ from scraper.queue_manager import QueueManager
 from scraper.snooper import Snooper
 
 
+
 @pytest.fixture
 def qm(fake_redis):
     qm = QueueManager("example.com", redis_client=fake_redis)
@@ -287,3 +288,54 @@ async def test_skips_noise_urls(fake_redis, snooper):
     noise_results = [r for r in results if r.url != "https://example.com/"]
     assert all(r.status == "skipped" for r in noise_results)
     assert all(r.skip_reason == "noise-url" for r in noise_results)
+
+
+@pytest.mark.asyncio
+async def test_skips_login_redirect_page(fake_redis, snooper):
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/dashboard")
+
+    login_page = PageResult(
+        url="https://example.com/dashboard",
+        status="success",
+        title="Sign in to continue",
+        markdown="# Sign in\n\nPlease sign in to view this page.",
+        engine_used="crawl4ai",
+    )
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine"):
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(return_value=(login_page, []))
+        MockPrimary.return_value = mock_engine
+
+        scraper = HybridScraper(qm, snooper, max_pages=1)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    assert any(r.status == "skipped" and r.skip_reason == "login-redirect" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_db_records_successful_page(fake_redis, snooper):
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/about")
+
+    success = PageResult(url="https://example.com/about", status="success",
+                         markdown="# About\n\nContent.", engine_used="crawl4ai")
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine"), \
+         patch("scraper.hybrid_scraper.PipelineDB") as MockDB:
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(return_value=(success, []))
+        MockPrimary.return_value = mock_engine
+
+        mock_db_instance = MagicMock()
+        MockDB.return_value = mock_db_instance
+
+        scraper = HybridScraper(qm, snooper, max_pages=1)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    mock_db_instance.upsert_scraped.assert_called_once()
+    call_kwargs = mock_db_instance.upsert_scraped.call_args
+    assert call_kwargs[1]["url"] == "https://example.com/about" or call_kwargs[0][0] == "https://example.com/about"
