@@ -5,6 +5,7 @@ from pages.scrape_page import scrape_page
 from pages.clean_page import clean_page
 from pages.index_page import index_page
 from pages.chat_page import chat_page
+from pages.settings_page import settings_page
 
 
 def main() -> None:
@@ -15,6 +16,7 @@ def main() -> None:
         "Clean": clean_page,
         "Index": index_page,
         "Chat": chat_page,
+        "Settings": settings_page,
     }
 
     page = st.sidebar.radio("Pipeline", list(pages.keys()))
