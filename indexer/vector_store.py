@@ -9,6 +9,7 @@ Collection schema:
   - Vectors: dense, size=dimensions
   - Payload: url, title, page_type, chunk_index, section_heading, text
 """
+import hashlib
 from typing import Optional
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -65,8 +66,8 @@ class VectorStore:
 
         points = []
         for chunk in chunks:
-            # Use hash of id string as integer point ID
-            point_id = abs(hash(chunk["id"])) % (10**15)
+            # Use deterministic SHA-256 hash of id string as integer point ID
+            point_id = int(hashlib.sha256(chunk["id"].encode()).hexdigest()[:15], 16)
             points.append(PointStruct(
                 id=point_id,
                 vector=chunk["vector"],

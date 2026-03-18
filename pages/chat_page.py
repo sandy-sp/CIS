@@ -27,6 +27,7 @@ def chat_page() -> None:
     api_key = settings.get("api_key", "")
     embedding_backend = settings.get("embedding_backend", "local")
     embedding_api_key = settings.get("embedding_api_key", "")
+    ollama_url = settings.get("ollama_url", "http://localhost:11434")
     collection_name = st.session_state.get("domain", "rag-collection")
 
     # Validate settings
@@ -76,7 +77,7 @@ def chat_page() -> None:
                     chunks = retriever.retrieve(question)
 
                     # Generate answer
-                    gen_kwargs = {"backend": backend}
+                    gen_kwargs = {"backend": backend, "ollama_url": ollama_url}
                     if api_key:
                         gen_kwargs["api_key"] = api_key
                     generator = Generator(**gen_kwargs)

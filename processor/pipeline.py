@@ -92,7 +92,7 @@ class Pipeline:
             page_type=clean_result.page_type,
         )
 
-        # Dedup (filter near-duplicate chunks within this page's chunks)
+        # Dedup (dedup across all pages in this run)
         chunks = self._deduplicator.deduplicate(chunks)
 
         # Save chunks to data/clean/

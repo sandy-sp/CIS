@@ -1,7 +1,9 @@
 # scraper/hybrid_scraper.py
 import asyncio
+import re as _re
 import re
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path as _Path
 from typing import AsyncGenerator
 from urllib.parse import urldefrag, urljoin, urlparse
 
@@ -24,6 +26,18 @@ _LOGIN_PATTERNS = re.compile(
     r"\b(sign\s*in|log\s*in|login|sign\s*up|create\s+account|please\s+authenticate)\b",
     re.IGNORECASE,
 )
+
+_RAW_DIR = _Path("data/raw")
+
+
+def _safe_filename(url: str) -> str:
+    """Convert URL to a safe filename."""
+    # Remove scheme
+    name = _re.sub(r"^https?://", "", url)
+    # Replace non-alphanumeric chars with underscore
+    name = _re.sub(r"[^a-zA-Z0-9_\-.]", "_", name)
+    # Truncate to 200 chars
+    return name[:200] + ".md"
 
 
 class HybridScraper:
@@ -50,6 +64,15 @@ class HybridScraper:
         # Check first 500 chars of markdown (avoid scanning whole document)
         snippet = (result.markdown or "")[:500]
         return bool(_LOGIN_PATTERNS.search(snippet))
+
+    def _save_to_disk(self, result: PageResult) -> None:
+        """Save a successful scraped page to data/raw/ for the Clean step."""
+        try:
+            _RAW_DIR.mkdir(parents=True, exist_ok=True)
+            filename = _safe_filename(result.url)
+            (_RAW_DIR / filename).write_text(result.markdown, encoding="utf-8")
+        except Exception:
+            pass  # disk write failure doesn't fail the crawl
 
     async def crawl(self, start_url: str) -> AsyncGenerator[PageResult, None]:
         self.queue.enqueue(start_url)
@@ -94,6 +117,7 @@ class HybridScraper:
 
             if result.status == "success":
                 self.queue.save_result(result)   # persist for resume recovery
+                self._save_to_disk(result)
                 self._pipeline_db.upsert_scraped(
                     url=result.url,
                     domain=self.queue.domain,

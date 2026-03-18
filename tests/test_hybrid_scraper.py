@@ -342,6 +342,30 @@ async def test_pipeline_db_records_successful_page(fake_redis, snooper):
 
 
 @pytest.mark.asyncio
+async def test_successful_page_saved_to_disk(fake_redis, snooper, tmp_path):
+    """Verify successful pages are written to data/raw/ directory."""
+    qm = QueueManager("example.com", redis_client=fake_redis)
+    qm.enqueue("https://example.com/about")
+
+    success = PageResult(url="https://example.com/about", status="success",
+                         markdown="---\nurl: https://example.com/about\n---\n\n# About\n\nContent.",
+                         engine_used="crawl4ai")
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine"), \
+         patch("scraper.hybrid_scraper._RAW_DIR", tmp_path):
+        mock_engine = AsyncMock()
+        mock_engine.scrape = AsyncMock(return_value=(success, []))
+        MockPrimary.return_value = mock_engine
+
+        scraper = HybridScraper(qm, snooper, max_pages=1)
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    md_files = list(tmp_path.glob("*.md"))
+    assert len(md_files) >= 1
+
+
+@pytest.mark.asyncio
 async def test_skips_login_redirect_on_disallowed_scrapy_path(fake_redis, snooper):
     qm = QueueManager("example.com", redis_client=fake_redis)
     qm.enqueue("https://example.com/members")
