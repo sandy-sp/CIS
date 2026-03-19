@@ -1,13 +1,14 @@
 # chat/generator.py
 """
-LLM generator for RAG chat. Supports three backends:
-  - "ollama":    Local Ollama (default model: llama3.1:8b)
+LLM generator for company-intelligence chat. Supports three backends:
+  - "ollama":    Local Ollama (default model: llama3.2:3b)
   - "openai":    OpenAI API (default model: gpt-4o-mini)
   - "anthropic": Anthropic API (default model: claude-haiku-4-5)
 
-RAG prompt: answer ONLY from provided context. Cite sources. Say "I don't know" if not in context.
+Grounded prompt: answer ONLY from provided context. Cite sources. Say "I don't know" if not in context.
 Multi-turn: accepts last 5 conversation turns as history.
 """
+import os
 from typing import Optional
 
 
@@ -24,7 +25,7 @@ class Generator:
     def __init__(self, backend: str = "ollama",
                  api_key: Optional[str] = None,
                  model: Optional[str] = None,
-                 ollama_url: str = "http://localhost:11434"):
+                 ollama_url: Optional[str] = None):
         if backend not in self.SUPPORTED_BACKENDS:
             raise ValueError(f"backend must be one of {self.SUPPORTED_BACKENDS}, got {backend!r}")
         if backend in ("openai", "anthropic") and not api_key:
@@ -32,21 +33,22 @@ class Generator:
 
         self.backend = backend
         self.api_key = api_key
-        self.ollama_url = ollama_url
+        self.ollama_url = ollama_url or os.environ.get("OLLAMA_URL", "http://localhost:11434")
         self._model = model or self._default_model(backend)
+        self._ollama_client = None
 
     def _default_model(self, backend: str) -> str:
         defaults = {
-            "ollama": "llama3.1:8b",
-            "openai": "gpt-4o-mini",
-            "anthropic": "claude-haiku-4-5",
+            "ollama": os.environ.get("APP_DEFAULT_OLLAMA_LLM_MODEL", "llama3.2:3b"),
+            "openai": os.environ.get("APP_DEFAULT_OPENAI_LLM_MODEL", "gpt-4o-mini"),
+            "anthropic": os.environ.get("APP_DEFAULT_ANTHROPIC_LLM_MODEL", "claude-haiku-4-5"),
         }
         return defaults[backend]
 
     def generate(self, question: str, context_chunks: list,
                  history: Optional[list[dict]] = None) -> str:
         """
-        Generate a RAG answer.
+        Generate a grounded answer from indexed source chunks.
 
         Args:
             question: User question
@@ -64,6 +66,14 @@ class Generator:
             return self._call_openai(messages)
         else:
             return self._call_anthropic(messages)
+
+    def health_check(self) -> dict:
+        """Validate backend access for the configured model."""
+        if self.backend == "ollama":
+            return self._health_check_ollama()
+        if self.backend == "openai":
+            return self._health_check_openai()
+        return self._health_check_anthropic()
 
     def _build_context(self, chunks: list) -> str:
         """Format chunks into a context string with source citations."""
@@ -95,13 +105,110 @@ class Generator:
         messages.append({"role": "user", "content": user_content})
         return messages
 
+    def _load_ollama_client(self):
+        if self._ollama_client is None:
+            try:
+                import ollama
+            except ImportError:
+                raise ImportError("ollama package required. Install with: pip install ollama>=0.2.0")
+            if hasattr(ollama, "Client"):
+                self._ollama_client = ollama.Client(host=self.ollama_url)
+            else:
+                self._ollama_client = ollama
+        return self._ollama_client
+
+    def _ollama_model_names(self, client) -> list[str]:
+        if not hasattr(client, "list"):
+            return []
+        response = client.list()
+        if isinstance(response, dict):
+            models = response.get("models", [])
+        else:
+            models = getattr(response, "models", response)
+
+        names = []
+        for item in models or []:
+            if isinstance(item, dict):
+                name = item.get("model") or item.get("name")
+            else:
+                name = getattr(item, "model", None) or getattr(item, "name", None)
+            if name:
+                names.append(name)
+        return names
+
+    def _health_check_ollama(self) -> dict:
+        client = self._load_ollama_client()
+        model_names = self._ollama_model_names(client)
+        if model_names and self._model not in model_names:
+            raise ValueError(
+                f"Ollama model '{self._model}' is not available at {self.ollama_url}"
+            )
+        if not model_names:
+            if hasattr(client, "show"):
+                client.show(model=self._model)
+            elif hasattr(client, "chat"):
+                client.chat(
+                    model=self._model,
+                    messages=[{"role": "user", "content": "Reply with OK."}],
+                )
+            else:
+                raise RuntimeError("Unable to validate Ollama connectivity for the configured model")
+        return {
+            "backend": self.backend,
+            "model": self._model,
+            "message": f"Ollama is reachable at {self.ollama_url} and model '{self._model}' is available.",
+        }
+
+    def _health_check_openai(self) -> dict:
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise ImportError("openai package required. Install with: pip install openai>=1.30.0")
+
+        client = OpenAI(api_key=self.api_key)
+        response = client.models.retrieve(self._model)
+        resolved_model = getattr(response, "id", self._model)
+        return {
+            "backend": self.backend,
+            "model": resolved_model,
+            "message": f"OpenAI model '{resolved_model}' is available.",
+        }
+
+    def _health_check_anthropic(self) -> dict:
+        try:
+            import anthropic
+        except ImportError:
+            raise ImportError("anthropic package required. Install with: pip install anthropic>=0.28.0")
+
+        client = anthropic.Anthropic(api_key=self.api_key)
+        if hasattr(client, "models") and hasattr(client.models, "list"):
+            response = client.models.list()
+            models = getattr(response, "data", response)
+            model_names = [getattr(item, "id", None) for item in models or [] if getattr(item, "id", None)]
+            if model_names and self._model not in model_names:
+                raise ValueError(f"Anthropic model '{self._model}' is not available for this API key")
+            return {
+                "backend": self.backend,
+                "model": self._model,
+                "message": f"Anthropic model '{self._model}' is available.",
+            }
+
+        response = client.messages.create(
+            model=self._model,
+            max_tokens=1,
+            messages=[{"role": "user", "content": "Reply with OK."}],
+        )
+        _ = response  # Keep a reference to confirm the request succeeded.
+        return {
+            "backend": self.backend,
+            "model": self._model,
+            "message": f"Anthropic model '{self._model}' responded successfully.",
+        }
+
     def _call_ollama(self, messages: list[dict]) -> str:
         try:
-            import ollama
-            response = ollama.chat(
-                model=self._model,
-                messages=messages,
-            )
+            client = self._load_ollama_client()
+            response = client.chat(model=self._model, messages=messages)
             return response["message"]["content"]
         except ImportError:
             raise ImportError("ollama package required. Install with: pip install ollama>=0.2.0")

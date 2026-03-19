@@ -1,61 +1,66 @@
-"""
-Orchestrates the embedding and indexing pipeline:
-  1. Load clean Markdown chunk files from data/clean/
-  2. Parse YAML frontmatter to extract chunk metadata
-  3. Embed chunk text using Embedder
-  4. Upsert into Qdrant via VectorStore
-  5. Update SQLite pipeline.db with indexed_at
-
-Yields progress events for Streamlit UI to display.
-"""
+"""Embed cleaned company-intel page records into Qdrant."""
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Generator, Optional
-import yaml
 
+from company_intel.models import PageRecord
+from company_intel.review import is_record_approved_for_outputs
+from company_intel.storage import JobStorage
 from indexer.embedder import Embedder
 from indexer.vector_store import VectorStore
+from processor.chunker import Chunker
 from scraper.pipeline_db import PipelineDB
 
 
-_CLEAN_DIR = Path("data/clean")
 _BATCH_SIZE = 32  # embed N chunks at a time
 
 
 def _utcnow_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
+def _is_indexable_record(record: PageRecord, include_external: bool = True) -> bool:
+    if record.status != "success" or record.is_noise or record.is_duplicate:
+        return False
+    if not include_external and record.source_type != "internal":
+        return False
+    if record.source_type == "external" and not is_record_approved_for_outputs(record):
+        return False
+    source_text = (record.markdown or record.clean_text or record.raw_text or "").strip()
+    return bool(source_text)
 
-def _parse_chunk_file(path: Path) -> Optional[dict]:
-    """Parse a chunk Markdown file. Returns dict with text + metadata or None on error."""
-    try:
-        content = path.read_text(encoding="utf-8")
-    except Exception:
-        return None
 
-    if not content.startswith("---"):
-        return {"text": content.strip(), "url": "", "title": "", "page_type": "other",
-                "chunk_index": 0, "chunk_total": 1, "section_heading": ""}
+def _record_source_text(record: PageRecord) -> str:
+    return (record.markdown or record.clean_text or record.raw_text or "").strip()
 
-    parts = content.split("---", 2)
-    if len(parts) < 3:
-        return None
 
-    try:
-        meta = yaml.safe_load(parts[1]) or {}
-    except yaml.YAMLError:
-        return None
+def _page_record_to_chunks(record: PageRecord, job_id: str = "") -> list[dict]:
+    if not _is_indexable_record(record):
+        return []
 
-    return {
-        "text": parts[2].strip(),
-        "url": meta.get("url", ""),
-        "title": meta.get("title", ""),
-        "page_type": meta.get("page_type", "other"),
-        "chunk_index": meta.get("chunk_index", 0),
-        "chunk_total": meta.get("chunk_total", 1),
-        "section_heading": meta.get("section_heading", ""),
-    }
+    chunker = Chunker()
+    chunks = chunker.chunk(
+        _record_source_text(record),
+        url=record.url,
+        title=record.title,
+        page_type=record.page_category or "other",
+    )
+    payloads = []
+    for chunk in chunks:
+        payloads.append({
+            "text": chunk.text,
+            "url": record.url,
+            "title": record.title,
+            "page_type": record.page_category or "other",
+            "page_category": record.page_category or "other",
+            "page_subtype": record.page_subtype,
+            "source_type": record.source_type,
+            "domain": record.domain,
+            "job_id": job_id,
+            "chunk_index": chunk.chunk_index,
+            "chunk_total": chunk.chunk_total,
+            "section_heading": chunk.section_heading,
+        })
+    return payloads
 
 
 @dataclass
@@ -68,16 +73,15 @@ class IndexProgress:
 
 
 class IndexerPipeline:
-    """Embeds and indexes clean chunks into Qdrant."""
+    """Embeds and indexes cleaned company-intel page records into Qdrant."""
 
     def __init__(self, collection_name: str, embedder: Embedder,
-                 clean_dir: Path = _CLEAN_DIR,
                  qdrant_url: Optional[str] = None,
                  in_memory: bool = False,
-                 db: Optional[PipelineDB] = None):
+                 db: Optional[PipelineDB] = None,
+                 storage: Optional[JobStorage] = None):
         self.collection_name = collection_name
         self.embedder = embedder
-        self.clean_dir = clean_dir
         self._store = VectorStore(
             collection_name=collection_name,
             dimensions=embedder.dimensions,
@@ -85,21 +89,34 @@ class IndexerPipeline:
             in_memory=in_memory,
         )
         self._db = db or PipelineDB()
+        self._storage = storage or JobStorage()
 
-    def run(self, chunk_files: Optional[list[Path]] = None) -> Generator[IndexProgress, None, None]:
-        """
-        Embed and index chunk files. If chunk_files is None, uses data/clean/*.md.
-        Yields IndexProgress events for progress tracking.
-        """
-        if chunk_files is None:
-            chunk_files = sorted(self.clean_dir.glob("*.md"))
+    def load_job_records(self, job_id: str, include_external: bool = True) -> list[PageRecord]:
+        source_type = None if include_external else "internal"
+        records = self._storage.load_page_records(job_id, source_type=source_type)
+        return [record for record in records if _is_indexable_record(record, include_external=include_external)]
 
-        # Parse all chunk files
+    def load_job_source_records(self, job_id: str, include_external: bool = True) -> list[PageRecord]:
+        source_type = None if include_external else "internal"
+        return self._storage.load_page_records(job_id, source_type=source_type)
+
+    def run_job(self, job_id: str, include_external: bool = True) -> Generator[IndexProgress, None, None]:
+        records = self.load_job_records(job_id, include_external=include_external)
+        yield from self.run(page_records=records, job_id=job_id)
+
+    def replace_job_collection(self, job_id: str, include_external: bool = True) -> Generator[IndexProgress, None, None]:
+        all_source_records = self.load_job_source_records(job_id, include_external=include_external)
+        for record in all_source_records:
+            if record.url:
+                self._store.delete_by_url(record.url)
+        yield from self.run_job(job_id, include_external=include_external)
+
+    def run(self, page_records: Optional[list[PageRecord]] = None,
+            job_id: str = "") -> Generator[IndexProgress, None, None]:
+        """Embed and index company-intel page records."""
         parsed = []
-        for f in chunk_files:
-            chunk_data = _parse_chunk_file(f)
-            if chunk_data and chunk_data["text"]:
-                parsed.append(chunk_data)
+        for record in page_records or []:
+            parsed.extend(_page_record_to_chunks(record, job_id=job_id))
 
         total = len(parsed)
 

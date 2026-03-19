@@ -26,20 +26,11 @@ class Snooper:
 
     def get_seed_urls(self) -> list[str]:
         """Return seed URLs from llm.txt, sitemap, or root discovery."""
-        try:
-            r = requests.get(
-                f"{self.base_url}/llm.txt",
-                headers={"User-Agent": self.USER_AGENT},
-                timeout=10,
-            )
-            if r.status_code == 200:
-                self.has_llm_txt = True
-                urls = [u.strip() for u in r.text.splitlines() if u.strip().startswith("http")]
-                if urls:
-                    self.seed_source = "llm.txt"
-                    return urls
-        except requests.RequestException:
-            pass
+        llm_urls = self._fetch_llm_urls()
+        if llm_urls:
+            self.has_llm_txt = True
+            self.seed_source = "llm.txt"
+            return llm_urls
 
         sitemap_urls = self._fetch_sitemap_urls()
         if sitemap_urls:
@@ -48,6 +39,43 @@ class Snooper:
 
         self.seed_source = "discovery"
         return [f"{self.base_url}/"]
+
+    def get_discovery_urls(self) -> list[str]:
+        """Return a combined seed set from llm.txt, sitemap, and root."""
+        urls: list[str] = [f"{self.base_url}/"]
+        llm_urls = self._fetch_llm_urls()
+        if llm_urls:
+            self.has_llm_txt = True
+            urls.extend(llm_urls)
+        sitemap_urls = self._fetch_sitemap_urls()
+        if sitemap_urls:
+            urls.extend(sitemap_urls)
+        deduped = list(dict.fromkeys(urls))
+        if llm_urls and sitemap_urls:
+            self.seed_source = "llm.txt+sitemap+root"
+        elif llm_urls:
+            self.seed_source = "llm.txt+root"
+        elif sitemap_urls:
+            self.seed_source = "sitemap+root"
+        else:
+            self.seed_source = "discovery"
+        return deduped
+
+    def _fetch_llm_urls(self) -> list[str]:
+        """Return http URLs listed in llm.txt, if present."""
+        try:
+            r = requests.get(
+                f"{self.base_url}/llm.txt",
+                headers={"User-Agent": self.USER_AGENT},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                urls = [u.strip() for u in r.text.splitlines() if u.strip().startswith("http")]
+                if urls:
+                    return urls
+        except requests.RequestException:
+            pass
+        return []
 
     def load_robots(self) -> None:
         """Fetch and parse robots.txt; set crawl_delay."""

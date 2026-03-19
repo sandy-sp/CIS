@@ -8,7 +8,7 @@ from chat.generator import Generator
 def test_generator_init_ollama():
     g = Generator(backend="ollama")
     assert g.backend == "ollama"
-    assert g._model == "llama3.1:8b"
+    assert g._model == "llama3.2:3b"
 
 
 def test_generator_init_openai():
@@ -84,15 +84,18 @@ def test_build_messages_limits_history_to_5():
 
 def test_generate_ollama_mocked():
     mock_ollama = MagicMock()
-    mock_ollama.chat.return_value = {"message": {"content": "Cloud services help businesses."}}
+    mock_client = MagicMock()
+    mock_client.chat.return_value = {"message": {"content": "Cloud services help businesses."}}
+    mock_ollama.Client.return_value = mock_client
 
     with patch.dict(sys.modules, {"ollama": mock_ollama}):
-        g = Generator(backend="ollama")
+        g = Generator(backend="ollama", ollama_url="http://localhost:11434")
         chunks = [{"url": "https://ex.com", "title": "T", "text": "Cloud content."}]
         result = g.generate("What services?", chunks)
 
     assert result == "Cloud services help businesses."
-    mock_ollama.chat.assert_called_once()
+    mock_ollama.Client.assert_called_once_with(host="http://localhost:11434")
+    mock_client.chat.assert_called_once()
 
 
 def test_generate_openai_mocked():
@@ -123,3 +126,49 @@ def test_generate_anthropic_mocked():
         result = g.generate("What services?", [])
 
     assert result == "Anthropic answer."
+
+
+def test_health_check_ollama_uses_model_list():
+    mock_ollama = MagicMock()
+    mock_client = MagicMock()
+    mock_client.list.return_value = {"models": [{"model": "llama3.2:3b"}]}
+    mock_ollama.Client.return_value = mock_client
+
+    with patch.dict(sys.modules, {"ollama": mock_ollama}):
+        g = Generator(backend="ollama", ollama_url="http://localhost:11434")
+        result = g.health_check()
+
+    assert result["backend"] == "ollama"
+    assert result["model"] == "llama3.2:3b"
+    mock_ollama.Client.assert_called_once_with(host="http://localhost:11434")
+    mock_client.list.assert_called_once_with()
+
+
+def test_health_check_openai_retrieves_model():
+    mock_openai_module = MagicMock()
+    mock_client = MagicMock()
+    mock_client.models.retrieve.return_value = MagicMock(id="gpt-4o-mini")
+    mock_openai_module.OpenAI.return_value = mock_client
+
+    with patch.dict(sys.modules, {"openai": mock_openai_module}):
+        g = Generator(backend="openai", api_key="sk-test")
+        result = g.health_check()
+
+    assert result["backend"] == "openai"
+    assert result["model"] == "gpt-4o-mini"
+    mock_client.models.retrieve.assert_called_once_with("gpt-4o-mini")
+
+
+def test_health_check_anthropic_uses_models_list():
+    mock_anthropic_module = MagicMock()
+    mock_client = MagicMock()
+    mock_client.models.list.return_value = MagicMock(data=[MagicMock(id="claude-haiku-4-5")])
+    mock_anthropic_module.Anthropic.return_value = mock_client
+
+    with patch.dict(sys.modules, {"anthropic": mock_anthropic_module}):
+        g = Generator(backend="anthropic", api_key="ant-test")
+        result = g.health_check()
+
+    assert result["backend"] == "anthropic"
+    assert result["model"] == "claude-haiku-4-5"
+    mock_client.models.list.assert_called_once_with()

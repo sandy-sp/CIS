@@ -1,25 +1,10 @@
 # tests/test_indexer_pipeline.py
 import pytest
-from pathlib import Path
 from unittest.mock import MagicMock
-from indexer.pipeline import IndexerPipeline, IndexProgress, _parse_chunk_file
+from company_intel.models import CrawlSettings, PageRecord
+from company_intel.storage import JobStorage
+from indexer.pipeline import IndexerPipeline, _page_record_to_chunks
 from indexer.embedder import Embedder
-from indexer.vector_store import VectorStore
-
-
-SAMPLE_CHUNK_MD = """---
-url: https://example.com/services
-title: Our Services
-page_type: services
-chunk_index: 0
-chunk_total: 2
-section_heading: 'Cloud Solutions'
-word_count: 45
----
-
-We provide comprehensive cloud migration services to help businesses modernize their
-infrastructure and reduce costs while improving reliability and scalability.
-"""
 
 
 @pytest.fixture
@@ -32,42 +17,45 @@ def mock_embedder():
 
 @pytest.fixture
 def pipeline(tmp_path, mock_embedder):
-    clean_dir = tmp_path / "clean"
-    clean_dir.mkdir()
     db_path = tmp_path / "pipeline.db"
     from scraper.pipeline_db import PipelineDB
     db = PipelineDB(db_path=db_path)
     return IndexerPipeline(
         collection_name="test-collection",
         embedder=mock_embedder,
-        clean_dir=clean_dir,
         in_memory=True,
         db=db,
     )
 
 
-def test_parse_chunk_file_extracts_metadata(tmp_path):
-    f = tmp_path / "chunk.md"
-    f.write_text(SAMPLE_CHUNK_MD)
-    result = _parse_chunk_file(f)
-    assert result["url"] == "https://example.com/services"
-    assert result["chunk_index"] == 0
-    assert result["section_heading"] == "Cloud Solutions"
-    assert len(result["text"]) > 0
+def _sample_record() -> PageRecord:
+    return PageRecord(
+        url="https://example.com/services/cloud",
+        normalized_url="https://example.com/services/cloud",
+        domain="example.com",
+        path="/services/cloud",
+        title="Cloud Services",
+        markdown=(
+            "# Cloud Services\n\n"
+            "We provide comprehensive cloud migration services to modernize "
+            "infrastructure and improve reliability."
+        ),
+        clean_text=(
+            "We provide comprehensive cloud migration services to modernize "
+            "infrastructure and improve reliability."
+        ),
+        page_category="services",
+        page_subtype="managed-services",
+        source_type="internal",
+        status="success",
+        word_count=13,
+    )
 
 
-def test_parse_chunk_file_missing_file_returns_none(tmp_path):
-    result = _parse_chunk_file(tmp_path / "nonexistent.md")
-    assert result is None
-
-
-def test_pipeline_run_yields_progress(pipeline, tmp_path):
-    chunk_file = tmp_path / "clean" / "services_chunk_000.md"
-    chunk_file.write_text(SAMPLE_CHUNK_MD)
-    pipeline.mock_embedder = pipeline.embedder  # access mock
+def test_pipeline_run_yields_progress(pipeline):
     pipeline.embedder.embed.return_value = [[0.1, 0.2, 0.3, 0.4]]
 
-    progress_events = list(pipeline.run([chunk_file]))
+    progress_events = list(pipeline.run([_sample_record()]))
 
     assert len(progress_events) > 0
     final = progress_events[-1]
@@ -75,11 +63,8 @@ def test_pipeline_run_yields_progress(pipeline, tmp_path):
     assert final.chunks_total == 1
 
 
-def test_pipeline_run_calls_embedder(pipeline, tmp_path):
-    chunk_file = tmp_path / "clean" / "services_chunk_000.md"
-    chunk_file.write_text(SAMPLE_CHUNK_MD)
-
-    list(pipeline.run([chunk_file]))
+def test_pipeline_run_calls_embedder(pipeline):
+    list(pipeline.run([_sample_record()]))
 
     pipeline.embedder.embed.assert_called_once()
     call_texts = pipeline.embedder.embed.call_args[0][0]
@@ -99,19 +84,145 @@ def test_pipeline_get_stats_returns_dict(pipeline):
     assert "collection_name" in stats
 
 
-def test_pipeline_updates_sqlite_after_indexing(pipeline, tmp_path):
-    chunk_file = tmp_path / "clean" / "services_chunk_000.md"
-    chunk_file.write_text(SAMPLE_CHUNK_MD)
-
+def test_pipeline_updates_sqlite_after_indexing(pipeline):
     # Pre-populate DB so mark_indexed can update
     pipeline._db.upsert_scraped(
-        url="https://example.com/services",
-        domain="example.com", page_type="services",
+        url="https://example.com/services/cloud",
+        domain="example.com",
+        page_type="services",
         word_count=100, scraped_at="2026-03-17T10:00:00"
     )
-    pipeline._db.mark_cleaned("https://example.com/services", "2026-03-17T11:00:00", 2)
+    pipeline._db.mark_cleaned("https://example.com/services/cloud", "2026-03-17T11:00:00", 1)
 
-    list(pipeline.run([chunk_file]))
+    list(pipeline.run([_sample_record()]))
 
     pages = pipeline._db.get_pages()
     assert any(p["status"] == "indexed" for p in pages)
+
+
+def test_page_record_to_chunks_uses_company_intel_metadata():
+    record = PageRecord(
+        url="https://example.com/services/cloud",
+        normalized_url="https://example.com/services/cloud",
+        domain="example.com",
+        path="/services/cloud",
+        title="Cloud Services",
+        markdown="# Cloud Services\n\nWe provide cloud migration and managed platform support.",
+        clean_text="We provide cloud migration and managed platform support.",
+        page_category="services",
+        page_subtype="managed-services",
+        source_type="internal",
+        word_count=9,
+    )
+
+    chunks = _page_record_to_chunks(record, job_id="job-123")
+
+    assert len(chunks) == 1
+    assert chunks[0]["page_type"] == "services"
+    assert chunks[0]["source_type"] == "internal"
+    assert chunks[0]["job_id"] == "job-123"
+    assert "cloud migration" in chunks[0]["text"].lower()
+
+
+def test_pipeline_run_job_indexes_company_records(tmp_path, mock_embedder):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    job.status = "completed"
+    storage.save_job(job)
+
+    record = PageRecord(
+        url="https://example.com/about",
+        normalized_url="https://example.com/about",
+        domain="example.com",
+        path="/about",
+        title="About Example",
+        markdown="# About\n\nExample builds regulated data platforms.",
+        clean_text="Example builds regulated data platforms.",
+        page_category="company",
+        source_type="internal",
+        word_count=5,
+    )
+    storage.save_page_record(job.job_id, record)
+
+    db_path = tmp_path / "pipeline.db"
+    from scraper.pipeline_db import PipelineDB
+    db = PipelineDB(db_path=db_path)
+
+    pipeline = IndexerPipeline(
+        collection_name="job-test",
+        embedder=mock_embedder,
+        in_memory=True,
+        db=db,
+        storage=storage,
+    )
+
+    progress_events = list(pipeline.run_job(job.job_id))
+
+    assert progress_events
+    assert progress_events[-1].chunks_total == 1
+    assert pipeline.get_stats()["total_vectors"] == 1
+
+
+def test_page_record_to_chunks_skips_unapproved_external_records():
+    record = PageRecord(
+        url="https://news.example.org/example-biotech",
+        normalized_url="https://news.example.org/example-biotech",
+        domain="news.example.org",
+        path="/example-biotech",
+        source_type="external",
+        discovered_via="search",
+        title="Example Biotech News",
+        markdown="# Example\n\nExample Biotech news item.",
+        clean_text="Example Biotech news item.",
+        page_category="resources",
+        metadata={"review_status": "pending"},
+        status="success",
+        word_count=4,
+    )
+
+    chunks = _page_record_to_chunks(record, job_id="job-123")
+
+    assert chunks == []
+
+
+def test_replace_job_collection_removes_rejected_external_vectors(tmp_path, mock_embedder):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    job.status = "completed"
+    storage.save_job(job)
+
+    approved_external = PageRecord(
+        url="https://linkedin.com/company/example",
+        normalized_url="https://linkedin.com/company/example",
+        domain="linkedin.com",
+        path="/company/example",
+        title="Example on LinkedIn",
+        markdown="# Example\n\nExample company profile.",
+        clean_text="Example company profile.",
+        page_category="external-profile",
+        source_type="external",
+        metadata={"review_status": "approved"},
+        status="success",
+        word_count=3,
+    )
+    storage.save_page_record(job.job_id, approved_external)
+
+    db_path = tmp_path / "pipeline.db"
+    from scraper.pipeline_db import PipelineDB
+    db = PipelineDB(db_path=db_path)
+    pipeline = IndexerPipeline(
+        collection_name="job-refresh-test",
+        embedder=mock_embedder,
+        in_memory=True,
+        db=db,
+        storage=storage,
+    )
+
+    list(pipeline.replace_job_collection(job.job_id, include_external=True))
+    assert pipeline.get_stats()["total_vectors"] == 1
+
+    approved_external.metadata["review_status"] = "rejected"
+    storage.save_page_record(job.job_id, approved_external)
+
+    list(pipeline.replace_job_collection(job.job_id, include_external=True))
+    assert pipeline.get_stats()["total_vectors"] == 0

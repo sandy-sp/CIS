@@ -5,10 +5,8 @@ Prints a single JSON object to stdout.
 """
 import json
 import sys
-import html2text
 import scrapy
 from scrapy.crawler import CrawlerProcess
-from bs4 import BeautifulSoup
 
 
 class SinglePageSpider(scrapy.Spider):
@@ -37,6 +35,9 @@ class SinglePageSpider(scrapy.Spider):
             yield scrapy.Request(url, meta={"playwright": True}, callback=self.parse)
 
     def parse(self, response):
+        import html2text
+        from bs4 import BeautifulSoup
+
         soup = BeautifulSoup(response.text, "html.parser")
 
         # Remove nav, footer, ads

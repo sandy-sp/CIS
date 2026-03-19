@@ -11,14 +11,29 @@ from bs4 import BeautifulSoup
 
 from models import PageResult
 from scraper.crawl4ai_engine import Crawl4AIEngine
+from scraper.page_probe import EngineRouter
 from scraper.scrapy_engine import ScrapyEngine
 from scraper.queue_manager import QueueManager
 from scraper.snooper import Snooper
 from scraper.page_processor import PageProcessor
 from scraper.pipeline_db import PipelineDB
+from scraper.static_engine import StaticEngine
 
 _NOISE_URL_PATTERNS = re.compile(
     r"/(privacy|terms|cookie|legal|sitemap|gdpr|disclaimer|imprint|impressum)",
+    re.IGNORECASE,
+)
+
+# Calendar/download URL noise: query params that trigger file downloads or
+# generate hundreds of near-identical paginated calendar views
+_NOISE_QUERY_PARAMS = re.compile(
+    r"[?&](ical|outlook-ical|tribe-bar-date)=",
+    re.IGNORECASE,
+)
+
+# Calendar date path segments: /day/YYYY-MM-DD, /week/YYYY-MM-DD, /month/YYYY-MM
+_CALENDAR_DATE_PATH = re.compile(
+    r"/(day|week|month|year)/\d{4}-\d{2}",
     re.IGNORECASE,
 )
 
@@ -44,14 +59,25 @@ class HybridScraper:
     """Async generator: Crawl4AI primary → Scrapy fallback per URL."""
 
     def __init__(self, queue: QueueManager, snooper: Snooper,
-                 max_pages: int = 500, cancel_flag: list | None = None):
+                 max_pages: int = 500, cancel_flag: list | None = None,
+                 ignore_robots_exclusions: bool = False,
+                 persist_raw_markdown: bool = True,
+                 keep_duplicate_pages: bool = False,
+                 engine_router: EngineRouter | None = None,
+                 enable_static_salvage: bool = False):
         self.queue = queue
         self.snooper = snooper
         self.max_pages = max_pages
         self.cancel_flag = cancel_flag or []  # set cancel_flag.append(True) to stop
+        self.ignore_robots_exclusions = ignore_robots_exclusions
+        self.persist_raw_markdown = persist_raw_markdown
+        self.keep_duplicate_pages = keep_duplicate_pages
+        self.enable_static_salvage = enable_static_salvage
         self._processor = PageProcessor()
         self._primary = Crawl4AIEngine()
         self._fallback = ScrapyEngine()
+        self._static = StaticEngine()
+        self._engine_router = engine_router
         self._pages_done = 0
         self._pipeline_db = PipelineDB()
 
@@ -98,8 +124,12 @@ class HybridScraper:
             if result.status == "success":
                 content_hash = self.queue.content_hash(result.markdown)   # hash BEFORE YAML injection
                 if self.queue.is_duplicate_content(content_hash):
-                    result.status = "skipped"
-                    result.skip_reason = "duplicate-content"
+                    if self.keep_duplicate_pages:
+                        result.skip_reason = "duplicate-content"
+                        result = self._processor.process(result)
+                    else:
+                        result.status = "skipped"
+                        result.skip_reason = "duplicate-content"
                 else:
                     self.queue.add_content_hash(content_hash)
                     result = self._processor.process(result)              # process only non-duplicates
@@ -117,7 +147,8 @@ class HybridScraper:
 
             if result.status == "success":
                 self.queue.save_result(result)   # persist for resume recovery
-                self._save_to_disk(result)
+                if self.persist_raw_markdown:
+                    self._save_to_disk(result)
                 self._pipeline_db.upsert_scraped(
                     url=result.url,
                     domain=self.queue.domain,
@@ -151,7 +182,11 @@ class HybridScraper:
         parsed_path = urlparse(url).path
         if _NOISE_URL_PATTERNS.search(parsed_path):
             return PageResult(url=url, status="skipped", skip_reason="noise-url")
-        if self.snooper.is_disallowed(url):
+        if _NOISE_QUERY_PARAMS.search(url):
+            return PageResult(url=url, status="skipped", skip_reason="noise-url")
+        if _CALENDAR_DATE_PATH.search(parsed_path):
+            return PageResult(url=url, status="skipped", skip_reason="calendar-date")
+        if self.snooper.is_disallowed(url) and not self.ignore_robots_exclusions:
             result, links = await self._run_scrapy(url)
             if result.status == "success":
                 result.skip_reason = "scrapy (robots-disallowed)"
@@ -171,28 +206,45 @@ class HybridScraper:
                 )
             return result
 
-        # Primary: Crawl4AI
-        result, links = await self._primary.scrape(url)
+        probe_result = None
+        if self._engine_router is not None:
+            probe_result = await asyncio.to_thread(self._engine_router.probe, url)
 
-        if result.status == "success":
-            if self.snooper.has_noindex(result.raw_html):
+        order = ["crawl4ai", "scrapy"]
+        if probe_result and probe_result.primary_engine == "scrapy":
+            order = ["scrapy", "crawl4ai"]
+
+        for engine in order:
+            if engine == "crawl4ai":
+                candidate, links = await self._primary.scrape(url)
+            else:
+                candidate, links = await self._run_scrapy(url)
+
+            if candidate.status != "success":
+                continue
+
+            if probe_result is not None:
+                candidate.engine_used = engine
+
+            if self.snooper.has_noindex(candidate.raw_html):
                 return PageResult(url=url, status="skipped", skip_reason="noindex")
-            if self._is_login_redirect(result):
+            if self._is_login_redirect(candidate):
                 return PageResult(url=url, status="skipped", skip_reason="login-redirect")
-            if not self.snooper.has_nofollow(result.raw_html):
+            if not self.snooper.has_nofollow(candidate.raw_html):
                 self._enqueue_links(links, url)
-            return result
+            return candidate
 
-        # Fallback: Scrapy (blocking, in thread)
-        fallback, fallback_links = await self._run_scrapy(url)
-        if fallback.status == "success":
-            if self.snooper.has_noindex(fallback.raw_html):
-                return PageResult(url=url, status="skipped", skip_reason="noindex")
-            if self._is_login_redirect(fallback):
-                return PageResult(url=url, status="skipped", skip_reason="login-redirect")
-            if not self.snooper.has_nofollow(fallback.raw_html):
-                self._enqueue_links(fallback_links, url)
-            return fallback
+        if self.enable_static_salvage:
+            salvage = await asyncio.to_thread(self._static.scrape, url)
+            if salvage.status == "success":
+                if self.snooper.has_noindex(salvage.raw_html):
+                    return PageResult(url=url, status="skipped", skip_reason="noindex")
+                if self._is_login_redirect(salvage):
+                    return PageResult(url=url, status="skipped", skip_reason="login-redirect")
+                links = self._extract_links(salvage.raw_html, url)
+                if not self.snooper.has_nofollow(salvage.raw_html):
+                    self._enqueue_links(links, url)
+                return salvage
 
         # Both failed
         self.queue.mark_failed(url)

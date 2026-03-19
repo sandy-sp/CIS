@@ -7,7 +7,7 @@ _DEFAULT_DB = Path("data/pipeline.db")
 
 
 class PipelineDB:
-    """SQLite-backed cross-step status tracker for the RAG pipeline."""
+    """SQLite-backed cross-step status tracker for crawl and indexing progress."""
 
     def __init__(self, db_path: Path = _DEFAULT_DB):
         self.db_path = db_path

@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.playwright-mcp/
+
+data/raw/
+data/clean/
+data/jobs/
+data/*.db
+data/index_registry.json
+data/app_settings.json
+data/activity_log.json
+
+output/
+*.xlsx

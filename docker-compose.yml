@@ -9,9 +9,18 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_URL=http://ollama:11434
+      - APP_DEFAULT_LLM_BACKEND=ollama
+      - APP_DEFAULT_EMBEDDING_BACKEND=ollama
+      - APP_DEFAULT_OLLAMA_LLM_MODEL=llama3.2:3b
+      - APP_DEFAULT_OLLAMA_EMBEDDING_MODEL=nomic-embed-text
     depends_on:
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
     stop_grace_period: 15s
 
   redis:
@@ -32,6 +41,36 @@ services:
     volumes:
       - qdrant_storage:/qdrant/storage
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  ollama-init:
+    image: ollama/ollama:latest
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - DEFAULT_OLLAMA_LLM_MODEL=llama3.2:3b
+      - DEFAULT_OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama_data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      ollama pull "$DEFAULT_OLLAMA_EMBEDDING_MODEL" &&
+      ollama pull "$DEFAULT_OLLAMA_LLM_MODEL"
+
 volumes:
   redis_data:
   qdrant_storage:
+  ollama_data:

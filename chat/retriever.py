@@ -13,6 +13,9 @@ class RetrievedChunk:
     section_heading: str
     score: float
     chunk_index: int = 0
+    page_type: str = ""
+    source_type: str = ""
+    job_id: str = ""
 
 
 class Retriever:
@@ -59,6 +62,9 @@ class Retriever:
                 section_heading=c.get("section_heading", ""),
                 score=c.get("score", 0.0),
                 chunk_index=c.get("chunk_index", 0),
+                page_type=c.get("page_type", ""),
+                source_type=c.get("source_type", ""),
+                job_id=c.get("job_id", ""),
             )
             for c in candidates_raw
         ]
