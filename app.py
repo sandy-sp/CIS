@@ -28,7 +28,7 @@ def _render_activity_log() -> None:
         if actions[0].button("Clear Log", key="clear_activity_log"):
             _ACTIVITY_LOG.clear()
             st.rerun()
-        actions[1].caption("Recent crawl, review, indexing, model, and chat events.")
+        actions[1].caption("Recent crawl, review, benchmark, indexing, model, and chat events.")
 
         entries = _ACTIVITY_LOG.list_entries(limit=30)
         if not entries:

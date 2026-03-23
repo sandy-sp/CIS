@@ -10,7 +10,7 @@ _CATEGORY_PATTERNS: list[tuple[str, str, list[str]]] = [
     ("legal", "", [r"/(privacy|terms|cookie|legal|gdpr|disclaimer|imprint|impressum|sitemap)"]),
     ("contact", "", [r"/(contact|get-in-touch|reach-us|contact-us)"]),
     ("careers", "", [r"/(career|job|join-us|work-with-us|hiring)"]),
-    ("people", "", [r"/(team|people|leadership|our-people|experts|staff)"]),
+    ("people", "", [r"/(team|people|leadership|our[-_]people|experts|staff)"]),
     ("partners", "", [r"/(partner|ecosystem|integration|vendor|alliances)"]),
     ("case-studies", "", [r"/(case-stud|case-study|case-studies|work|portfolio|success-stor|customer-stor|client-stor)"]),
     ("services", "", [r"/(service|solution|offering|capabilit|product)"]),

@@ -1,0 +1,1409 @@
+{
+  "company_domain": "zifornd.com",
+  "entities": {
+    "case_studies": [],
+    "customers": [],
+    "events": [
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "April 24, 2026"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "North Carolina, USA"
+          }
+        },
+        "name": "2026 BPD Cell and Gene Therapy Symposium",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/2026-bpd-cell-and-gene-therapy-symposium/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "March 24, 2026"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Boston, USA"
+          }
+        },
+        "name": "Analytica 2026 | Germany",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/analytica-2026-germany/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "October 6"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Basel, CH"
+          }
+        },
+        "name": "BioTechX EMEA",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/biotechx-emea/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "September 29"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Boston, USA"
+          }
+        },
+        "name": "BioTechX USA",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/biotechx-usa-3/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "May 27"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Basel, CH"
+          }
+        },
+        "name": "Future Labs Live | EMEA",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/future-labs-live-emea/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "September 22, 2026"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Amsterdam, NL"
+          }
+        },
+        "name": "Lab of the Future EMEA | 2026",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/lab-of-the-future-emea-2026/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "March 2, 2026"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "The Sheraton Boston Hotel, USA"
+          }
+        },
+        "name": "Lab of the Future USA | 2026",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/lab-of-the-future-usa-2026/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "May 27"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Basel, CH"
+          }
+        },
+        "name": "London Labs Live | EMEA",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/london-labs-live-emea/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "February 12, 2025"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "North Carolina, USA"
+          }
+        },
+        "name": "Manufacturing Summit 2025",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/manufacturing-summit-2025/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "November 1, 2026"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Mumbai"
+          }
+        },
+        "name": "Paperless Lab Academy | India 2026",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/paperless-lab-academy-india-2025/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "April 23"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "Hamburg"
+          }
+        },
+        "name": "Practical AI for Science Leaders: Platforms, Data, and Real Outcomes",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/zifo-sapio-sciences-lunch-learn-hamburg/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "June 2, 2026"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "Basel, CH"
+          }
+        },
+        "name": "Scientific Informatics Experience Exchange (SiEE) | Basel June 2, 2026",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/siee-basel-2026/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "April 14, 2026"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "Boston"
+          }
+        },
+        "name": "Scientific Informatics Experience Exchange (SiEE) | Boston April 14, 2026",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/siee-boston-2026/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "April 9, 2024"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "Basel, CH"
+          }
+        },
+        "name": "SiEE Basel 2024",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/siee-2024-basel/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "June 10, 2025"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "Basel, CH"
+          }
+        },
+        "name": "SiEE Basel 2025",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/siee-2025on-demand-basel/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "April 18, 2023"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "Boston, USA"
+          }
+        },
+        "name": "SiEE Boston 2023",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/siee-2023/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "October 16, 2024"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "Boston, USA"
+          }
+        },
+        "name": "SiEE Boston 2024",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/siee-2024-on-demand-boston-oct-16/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "October 17, 2023"
+          },
+          "event_type": {
+            "equals": "company-hosted"
+          },
+          "location": {
+            "equals": "San Francisco"
+          }
+        },
+        "name": "SiEE San Francisco 2023",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/siee-san-francisco/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "February 7, 2026"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Boston, MA"
+          }
+        },
+        "name": "SLAS 2026 International Conference & Exhibition",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/slas-2026-international-conference-exhibition/"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "April 21"
+          },
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Philadelphia, USA"
+          }
+        },
+        "name": "SmartLab USA",
+        "notes": "Curated from the first-party /events listing.",
+        "source_url_contains": [
+          "/event/smartlab-usa/"
+        ]
+      }
+    ],
+    "partners": [
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "ACD Labs",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Data Infrastructure & Cloud"
+          }
+        },
+        "name": "Agilab",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Robotics & Automation"
+          }
+        },
+        "name": "Automata",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Aveva",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "AWS",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Azure",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "Benchling",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "Biostrand",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "BIOVIA",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "GxP Asset Management"
+          }
+        },
+        "name": "Bluemountain",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "BSSN",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "CDD",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Clinical Data Management"
+          }
+        },
+        "name": "CDISC",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Certara",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Chemaxon",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Chemotargets",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Data Science"
+          }
+        },
+        "name": "DNA Nexuc",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "DNA Nexus",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Dotmatics",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Eagle Genomics",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Validation & Testing"
+          }
+        },
+        "name": "Eggplant",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Electronic Lab Notebook (ELN) Software"
+          }
+        },
+        "name": "eLabNext",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Entimo",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Fluxa",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Genedata",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "Genestack",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Cheminformatics"
+          }
+        },
+        "name": "Genomics",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Lab Instrument Data Management"
+          }
+        },
+        "name": "Honeywell",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Electronic Lab Notebook (ELN) Software"
+          }
+        },
+        "name": "IDBS",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Validation & Testing"
+          }
+        },
+        "name": "Intelliqa",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Ivention",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Validation & Testing"
+          }
+        },
+        "name": "Kneat",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Knime",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "L7 Informatics",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "GxP Asset Management"
+          }
+        },
+        "name": "Lab Operator",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Electronic Lab Notebook (ELN) Software"
+          }
+        },
+        "name": "Labguru - Biodata",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Electronic Lab Notebook (ELN) Software"
+          }
+        },
+        "name": "LABII",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Labvantage",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Clinical Data Management"
+          }
+        },
+        "name": "Medidata",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Electronic Lab Notebook (ELN) Software"
+          }
+        },
+        "name": "Mestrelab",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "Modul-Bio",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "Nextflow",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "AI & Semantics"
+          }
+        },
+        "name": "Nvidia",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Data Infrastructure & Cloud"
+          }
+        },
+        "name": "ONQ Software",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Optimistik",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Oracle",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Lab Instrument Data Management"
+          }
+        },
+        "name": "OSI PI - Aveva",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Data Infrastructure & Cloud"
+          }
+        },
+        "name": "Pega",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "Pure Starage",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Data Infrastructure & Cloud"
+          }
+        },
+        "name": "Pure Storage",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "QBD Vision",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Validation & Testing"
+          }
+        },
+        "name": "Qualio",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "Revvity Signals",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "Sapio Sciences",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "AI & Semantics"
+          }
+        },
+        "name": "SciBite",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Scieline",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Scilligence",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "AI & Semantics"
+          }
+        },
+        "name": "Smartlogic",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Data Infrastructure & Cloud"
+          }
+        },
+        "name": "Snaplogic",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Snowflake",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Starlims",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Synthace",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Data Infrastructure & Cloud"
+          }
+        },
+        "name": "Sythace",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Clinical Data Management"
+          }
+        },
+        "name": "Thermo Fisher",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Bioinformatics"
+          }
+        },
+        "name": "TileDB",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Data Infrastructure & Cloud"
+          }
+        },
+        "name": "Titan",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Registration & Inventory"
+          }
+        },
+        "name": "Titian",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Uncountable",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "GxP Asset Management"
+          }
+        },
+        "name": "Veeva",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Analytics & Search"
+          }
+        },
+        "name": "Waters",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "GxP Asset Management"
+          }
+        },
+        "name": "Xybion",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "category": {
+            "equals": "Pipelining & Orchestration"
+          }
+        },
+        "name": "Zontal",
+        "notes": "Curated from the first-party /partners listing.",
+        "source_url_contains": [
+          "/partners"
+        ]
+      }
+    ],
+    "people": [
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Director, Sales & BD"
+          }
+        },
+        "name": "Christopher McClure",
+        "notes": "Curated from the first-party /our-people listing.",
+        "source_url_contains": [
+          "/our-people"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Cluster Lead"
+          }
+        },
+        "name": "Kristina Goncharenko",
+        "notes": "Curated from the first-party /our-people listing.",
+        "source_url_contains": [
+          "/our-people"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Head of People Operations, Americas"
+          }
+        },
+        "name": "Lisa Huguenin",
+        "notes": "Curated from the first-party /our-people listing.",
+        "source_url_contains": [
+          "/our-people"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Lead Consultant"
+          }
+        },
+        "name": "Niveda-Avinashilingam",
+        "notes": "Curated from the first-party /our-people listing.",
+        "source_url_contains": [
+          "/our-people"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Partner Success Manager"
+          }
+        },
+        "name": "Nora Lapusnyik",
+        "notes": "Curated from the first-party /our-people listing.",
+        "source_url_contains": [
+          "/our-people"
+        ]
+      },
+      {
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Client Partner"
+          }
+        },
+        "name": "Suchitra Ramaswamy (Suchi)",
+        "notes": "Curated from the first-party /our-people listing.",
+        "source_url_contains": [
+          "/our-people"
+        ]
+      }
+    ]
+  },
+  "name": "Zifo Precision Benchmark",
+  "notes": "Focused gold set for Zifo precision regression checks. Curated against first-party /partners, /our-people, and /events pages. customers and case_studies are explicitly empty until stable first-party evidence exists."
+}

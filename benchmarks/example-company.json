@@ -1,0 +1,43 @@
+{
+  "company_domain": "example.com",
+  "entities": {
+    "company_profile": [
+      {
+        "attribute_checks": {
+          "summary": {
+            "contains": "informatics company"
+          }
+        },
+        "name": "Example Biotech"
+      }
+    ],
+    "people": [
+      {
+        "attribute_checks": {
+          "linkedin_url": {
+            "contains": "linkedin.com/in/"
+          },
+          "title": {
+            "contains": "Director"
+          }
+        },
+        "name": "Christopher McClure"
+      }
+    ],
+    "services": [
+      {
+        "attribute_checks": {
+          "summary": {
+            "contains": "scientific data platform"
+          }
+        },
+        "name": "Data Platform Services",
+        "source_url_contains": [
+          "/services/data-platform"
+        ]
+      }
+    ]
+  },
+  "name": "Example Company Benchmark",
+  "notes": "Template benchmark file for evaluation harness development."
+}

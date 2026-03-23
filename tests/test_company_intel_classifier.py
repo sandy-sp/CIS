@@ -28,6 +28,13 @@ def test_classifier_detects_people():
     assert category == "people"
 
 
+def test_classifier_detects_people_with_underscore_path():
+    category, subtype, confidence = PageClassifier().classify(
+        _record("https://example.com/our_people/christopher-mcclure", title="Christopher McClure")
+    )
+    assert category == "people"
+
+
 def test_classifier_detects_resources_news_subtype():
     category, subtype, confidence = PageClassifier().classify(
         _record("https://example.com/news/launch", title="Company News")

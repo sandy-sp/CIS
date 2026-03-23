@@ -168,6 +168,22 @@ class JobStorage:
         output.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         return output
 
+    def load_entities(self, job_id: str) -> dict[str, list[ExtractedEntity]]:
+        path = self.job_dir(job_id) / "exports" / "entities.json"
+        if not path.exists():
+            return {}
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        entities: dict[str, list[ExtractedEntity]] = {}
+        for key, values in payload.items():
+            if not isinstance(values, list):
+                continue
+            entities[key] = [
+                ExtractedEntity(**value)
+                for value in values
+                if isinstance(value, dict)
+            ]
+        return entities
+
     def bundle_job(self, job_id: str) -> bytes:
         buf = io.BytesIO()
         root = self.job_dir(job_id)

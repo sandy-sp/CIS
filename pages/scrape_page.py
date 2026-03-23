@@ -5,12 +5,15 @@ import queue
 import threading
 import time
 from collections import Counter
+from pathlib import Path
+import re
 
 import streamlit as st
 
 from activity_log import activity_marker_changed, log_activity
 from app_settings import default_ollama_url, ensure_session_settings
-from company_intel import CrawlSettings, JobRunner
+from company_intel import BenchmarkCase, CrawlSettings, JobRunner, build_job_benchmark_draft, evaluate_job
+from company_intel.evaluation import write_report
 from company_intel.review import external_review_status, set_external_review_status
 from company_intel.storage import JobStorage, collection_name_for_job
 from indexer.embedder import Embedder
@@ -22,6 +25,7 @@ REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 _STORAGE = JobStorage()
 _REGISTRY = IndexRegistry()
+_BENCHMARKS_DIR = Path("benchmarks")
 
 
 def _job_option_label(job: dict) -> str:
@@ -44,6 +48,21 @@ def _ensure_state() -> None:
         "collection_name": "",
         "indexed_targets": [],
         "active_rag_target_id": "",
+        "benchmark_draft_bytes": b"",
+        "benchmark_draft_file_name": "",
+        "benchmark_draft_summary": {},
+        "benchmark_draft_job_id": "",
+        "benchmark_report_json_bytes": b"",
+        "benchmark_report_md_bytes": b"",
+        "benchmark_report_summary": {},
+        "benchmark_report_rows": [],
+        "benchmark_report_job_id": "",
+        "benchmark_report_name": "",
+        "benchmark_report_details": {},
+        "benchmark_editor_text": "",
+        "benchmark_editor_file_name": "",
+        "benchmark_editor_summary": {},
+        "benchmark_editor_job_id": "",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -92,6 +111,21 @@ def _start_job(start_url: str, max_pages: int, rate_limit: float,
     st.session_state.job_bundle = None
     st.session_state.job_records = []
     st.session_state.job_entities = {}
+    st.session_state.benchmark_draft_bytes = b""
+    st.session_state.benchmark_draft_file_name = ""
+    st.session_state.benchmark_draft_summary = {}
+    st.session_state.benchmark_draft_job_id = ""
+    st.session_state.benchmark_report_json_bytes = b""
+    st.session_state.benchmark_report_md_bytes = b""
+    st.session_state.benchmark_report_summary = {}
+    st.session_state.benchmark_report_rows = []
+    st.session_state.benchmark_report_job_id = ""
+    st.session_state.benchmark_report_name = ""
+    st.session_state.benchmark_report_details = {}
+    st.session_state.benchmark_editor_text = ""
+    st.session_state.benchmark_editor_file_name = ""
+    st.session_state.benchmark_editor_summary = {}
+    st.session_state.benchmark_editor_job_id = ""
     st.session_state.cancel_flag = []
     st.session_state.result_queue = queue.Queue()
 
@@ -120,6 +154,21 @@ def _load_job_outputs(job_id: str) -> None:
     st.session_state.job_records = [record.to_dict() for record in records]
     st.session_state.job_entities = entities
     st.session_state.job_bundle = _STORAGE.bundle_job(job_id)
+    st.session_state.benchmark_draft_bytes = b""
+    st.session_state.benchmark_draft_file_name = ""
+    st.session_state.benchmark_draft_summary = {}
+    st.session_state.benchmark_draft_job_id = ""
+    st.session_state.benchmark_report_json_bytes = b""
+    st.session_state.benchmark_report_md_bytes = b""
+    st.session_state.benchmark_report_summary = {}
+    st.session_state.benchmark_report_rows = []
+    st.session_state.benchmark_report_job_id = ""
+    st.session_state.benchmark_report_name = ""
+    st.session_state.benchmark_report_details = {}
+    st.session_state.benchmark_editor_text = ""
+    st.session_state.benchmark_editor_file_name = ""
+    st.session_state.benchmark_editor_summary = {}
+    st.session_state.benchmark_editor_job_id = ""
 
 
 def _poll_queue() -> None:
@@ -434,6 +483,442 @@ def _render_external_sources(records: list[dict]) -> None:
         st.rerun()
 
 
+def _safe_benchmark_filename(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", value).strip("-").lower()
+    return slug or "benchmark"
+
+
+def _benchmark_repo_file_name(value: str) -> str:
+    candidate = Path(str(value or "").strip() or "benchmark.json").name
+    stem = Path(candidate).stem or "benchmark"
+    return f"{_safe_benchmark_filename(stem)}.json"
+
+
+def _normalize_benchmark_payload(benchmark_payload: bytes | str) -> tuple[BenchmarkCase, bytes, dict[str, int]]:
+    if isinstance(benchmark_payload, str):
+        benchmark_payload = benchmark_payload.encode("utf-8")
+    payload = json.loads(benchmark_payload.decode("utf-8"))
+    benchmark = BenchmarkCase.from_dict(payload)
+    normalized = json.dumps(benchmark.to_dict(), indent=2, sort_keys=True).encode("utf-8")
+    summary = {key: len(values) for key, values in benchmark.entities.items()}
+    return benchmark, normalized, summary
+
+
+def _load_benchmark_editor_payload(benchmark_payload: bytes, file_name: str, *, job_id: str = "") -> None:
+    _benchmark, normalized, summary = _normalize_benchmark_payload(benchmark_payload)
+    st.session_state.benchmark_editor_text = normalized.decode("utf-8")
+    st.session_state.benchmark_editor_file_name = _benchmark_repo_file_name(file_name)
+    st.session_state.benchmark_editor_summary = summary
+    st.session_state.benchmark_editor_job_id = job_id
+
+
+def _save_curated_benchmark(
+    benchmark_payload: bytes | str,
+    file_name: str,
+    *,
+    benchmarks_dir: Path | None = None,
+) -> tuple[Path, dict[str, int]]:
+    benchmark, normalized, summary = _normalize_benchmark_payload(benchmark_payload)
+    output_dir = benchmarks_dir or _BENCHMARKS_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_name = _benchmark_repo_file_name(file_name or benchmark.company_domain or benchmark.name)
+    output_path = output_dir / output_name
+    output_path.write_bytes(normalized)
+    return output_path, summary
+
+
+def _build_benchmark_draft_payload(
+    job_id: str,
+    *,
+    limit_per_type: int = 25,
+    entity_types: list[str] | None = None,
+    storage: JobStorage | None = None,
+) -> tuple[str, bytes, dict[str, int]]:
+    storage = storage or _STORAGE
+    benchmark = build_job_benchmark_draft(
+        job_id,
+        storage=storage,
+        limit_per_type=limit_per_type,
+        entity_types=entity_types,
+    )
+    payload = json.dumps(benchmark.to_dict(), indent=2, sort_keys=True).encode("utf-8")
+    filename = f"{_safe_benchmark_filename(benchmark.company_domain or benchmark.name)}-benchmark-draft.json"
+    summary = {key: len(values) for key, values in benchmark.entities.items()}
+    return filename, payload, summary
+
+
+def _prepare_benchmark_draft(job_id: str, limit_per_type: int, entity_types: list[str]) -> None:
+    filename, payload, summary = _build_benchmark_draft_payload(
+        job_id,
+        limit_per_type=limit_per_type,
+        entity_types=entity_types or None,
+    )
+    _load_benchmark_editor_payload(payload, filename, job_id=job_id)
+    st.session_state.benchmark_draft_bytes = payload
+    st.session_state.benchmark_draft_file_name = filename
+    st.session_state.benchmark_draft_summary = summary
+    st.session_state.benchmark_draft_job_id = job_id
+    log_activity(
+        st.session_state,
+        "benchmark",
+        f"Generated benchmark draft for `{job_id}`",
+        level="success",
+        details=f"Entity types: {len(summary)} | Entries: {sum(summary.values())}",
+    )
+
+
+def _available_benchmark_files() -> list[Path]:
+    if not _BENCHMARKS_DIR.exists():
+        return []
+    return sorted(_BENCHMARKS_DIR.glob("*.json"))
+
+
+def _benchmark_relative_name(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
+def _benchmark_report_rows(report) -> list[dict]:
+    rows = []
+    for entity_type, entity_report in sorted(report.entity_types.items()):
+        rows.append({
+            "Entity Type": entity_type,
+            "Gold": entity_report.gold_count,
+            "Predicted": entity_report.predicted_count,
+            "Matched": entity_report.matched_count,
+            "Precision": entity_report.precision,
+            "Recall": entity_report.recall,
+            "F1": entity_report.f1,
+            "Attribute Accuracy": entity_report.attribute_accuracy,
+            "Source URL Accuracy": entity_report.source_url_accuracy,
+            "Missing": len(entity_report.missing),
+            "Unexpected": len(entity_report.unexpected),
+        })
+    return rows
+
+
+def _benchmark_entity_detail(report_payload: dict, entity_type: str) -> dict[str, list]:
+    entity_report = (report_payload.get("entity_types", {}) or {}).get(entity_type, {}) or {}
+    match_rows = []
+    for match in entity_report.get("matches", []) or []:
+        match_rows.append({
+            "Expected": match.get("expected_name", ""),
+            "Predicted": match.get("predicted_name", ""),
+            "Matched": "yes" if match.get("matched") else "",
+            "Checks Passed": f"{match.get('passed_check_count', 0)}/{match.get('total_check_count', 0)}",
+            "Source URL Checks": f"{match.get('source_url_passed', 0)}/{match.get('source_url_total', 0)}",
+            "Failed Checks": ", ".join(match.get("failed_checks", []) or []),
+            "Notes": match.get("expected_notes", ""),
+        })
+    return {
+        "matches": match_rows,
+        "missing": list(entity_report.get("missing", []) or []),
+        "unexpected": list(entity_report.get("unexpected", []) or []),
+    }
+
+
+def _evaluate_benchmark_payload(
+    job_id: str,
+    benchmark_payload: bytes,
+    benchmark_label: str,
+    *,
+    storage: JobStorage | None = None,
+) -> dict:
+    storage = storage or _STORAGE
+    payload = json.loads(benchmark_payload.decode("utf-8"))
+    benchmark = BenchmarkCase.from_dict(payload)
+    report = evaluate_job(job_id, benchmark, storage=storage)
+    report_dir = storage.job_dir(job_id) / "exports" / "evaluation" / _safe_benchmark_filename(benchmark.name or benchmark_label)
+    benchmark_path = report_dir / "benchmark_input.json"
+    benchmark_path.parent.mkdir(parents=True, exist_ok=True)
+    benchmark_path.write_text(json.dumps(benchmark.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+    json_path, markdown_path = write_report(report, report_dir)
+    return {
+        "benchmark_name": report.benchmark_name,
+        "overall": report.overall(),
+        "rows": _benchmark_report_rows(report),
+        "details": report.to_dict(),
+        "json_bytes": json_path.read_bytes(),
+        "markdown_bytes": markdown_path.read_bytes(),
+        "json_path": str(json_path),
+        "markdown_path": str(markdown_path),
+        "benchmark_path": str(benchmark_path),
+    }
+
+
+def _prepare_benchmark_report(job_id: str, benchmark_payload: bytes, benchmark_label: str) -> None:
+    result = _evaluate_benchmark_payload(job_id, benchmark_payload, benchmark_label)
+    st.session_state.benchmark_report_json_bytes = result["json_bytes"]
+    st.session_state.benchmark_report_md_bytes = result["markdown_bytes"]
+    st.session_state.benchmark_report_summary = result["overall"]
+    st.session_state.benchmark_report_rows = result["rows"]
+    st.session_state.benchmark_report_job_id = job_id
+    st.session_state.benchmark_report_name = result["benchmark_name"]
+    st.session_state.benchmark_report_details = result["details"]
+    log_activity(
+        st.session_state,
+        "benchmark",
+        f"Evaluated benchmark `{result['benchmark_name']}` for `{job_id}`",
+        level="success",
+        details=(
+            f"Precision: {result['overall']['precision']:.4f} | "
+            f"Recall: {result['overall']['recall']:.4f} | "
+            f"F1: {result['overall']['f1']:.4f}"
+        ),
+    )
+
+
+def _render_benchmark_draft() -> None:
+    if not st.session_state.job_id or not st.session_state.job_entities:
+        return
+
+    st.subheader("Benchmark Draft")
+    st.caption("Generate a draft benchmark JSON from the extracted entities, then curate it into gold data before scoring.")
+    entity_options = [key for key, values in st.session_state.job_entities.items() if values]
+    if not entity_options:
+        st.info("No extracted entities are available yet for benchmark drafting.")
+        return
+
+    default_types = [key for key in ("services", "industries", "case_studies", "partners", "customers", "people", "events") if key in entity_options]
+    selected_types = st.multiselect(
+        "Entity types",
+        options=entity_options,
+        default=default_types or entity_options,
+        key="benchmark_draft_entity_types",
+    )
+    limit_per_type = st.slider(
+        "Draft entries per type",
+        min_value=1,
+        max_value=50,
+        value=25,
+        key="benchmark_draft_limit",
+    )
+    if st.button("Generate Benchmark Draft", key="generate_benchmark_draft"):
+        _prepare_benchmark_draft(st.session_state.job_id, int(limit_per_type), selected_types)
+        st.rerun()
+
+    if st.session_state.get("benchmark_draft_job_id") != st.session_state.job_id:
+        return
+
+    summary = st.session_state.get("benchmark_draft_summary") or {}
+    if summary:
+        st.write(summary)
+    payload = st.session_state.get("benchmark_draft_bytes") or b""
+    filename = st.session_state.get("benchmark_draft_file_name") or "benchmark-draft.json"
+    if payload:
+        st.download_button(
+            "Download Benchmark Draft",
+            data=payload,
+            file_name=filename,
+            mime="application/json",
+            key="download_benchmark_draft",
+        )
+
+
+def _render_benchmark_editor() -> None:
+    if not st.session_state.job_id or not st.session_state.job_entities:
+        return
+
+    st.subheader("Benchmark Curation")
+    st.caption("Edit the generated draft into reviewed gold data, validate it, and save it under `benchmarks/` for repeatable scoring.")
+
+    if st.session_state.get("benchmark_draft_job_id") != st.session_state.job_id:
+        st.info("Generate a benchmark draft first, then curate it here.")
+        return
+
+    if not st.session_state.get("benchmark_editor_text"):
+        draft_payload = st.session_state.get("benchmark_draft_bytes") or b""
+        draft_name = st.session_state.get("benchmark_draft_file_name") or "benchmark-draft.json"
+        if draft_payload:
+            _load_benchmark_editor_payload(draft_payload, draft_name, job_id=st.session_state.job_id)
+
+    st.text_input(
+        "Benchmark file name",
+        key="benchmark_editor_file_name",
+        help="Saved under benchmarks/ with a sanitized .json file name.",
+    )
+    st.text_area(
+        "Curated benchmark JSON",
+        key="benchmark_editor_text",
+        height=360,
+    )
+
+    raw_text = st.session_state.get("benchmark_editor_text", "")
+    validation_error = ""
+    normalized_payload = b""
+    summary: dict[str, int] = {}
+    if raw_text.strip():
+        try:
+            _benchmark, normalized_payload, summary = _normalize_benchmark_payload(raw_text)
+        except Exception as exc:
+            validation_error = str(exc)
+
+    if st.session_state.get("benchmark_editor_summary"):
+        st.write(st.session_state["benchmark_editor_summary"])
+
+    action1, action2, action3 = st.columns(3)
+    if action1.button("Validate Curated Benchmark", key="validate_curated_benchmark", disabled=not raw_text.strip()):
+        if validation_error:
+            st.error(f"Benchmark validation failed: {validation_error}")
+        else:
+            st.session_state.benchmark_editor_text = normalized_payload.decode("utf-8")
+            st.session_state.benchmark_editor_summary = summary
+            log_activity(
+                st.session_state,
+                "benchmark",
+                f"Validated curated benchmark for `{st.session_state.job_id}`",
+                level="success",
+                details=f"Entity types: {len(summary)} | Entries: {sum(summary.values())}",
+            )
+            st.success("Benchmark JSON is valid.")
+
+    if action2.button("Save Curated Benchmark", key="save_curated_benchmark", disabled=not raw_text.strip()):
+        if validation_error:
+            st.error(f"Benchmark validation failed: {validation_error}")
+        else:
+            output_path, saved_summary = _save_curated_benchmark(
+                normalized_payload,
+                st.session_state.get("benchmark_editor_file_name", ""),
+            )
+            st.session_state.benchmark_editor_text = normalized_payload.decode("utf-8")
+            st.session_state.benchmark_editor_file_name = output_path.name
+            st.session_state.benchmark_editor_summary = saved_summary
+            log_activity(
+                st.session_state,
+                "benchmark",
+                f"Saved curated benchmark `{output_path.name}`",
+                level="success",
+                details=f"Path: {output_path}",
+            )
+            st.success(f"Saved benchmark to `{output_path}`")
+
+    if normalized_payload:
+        action3.download_button(
+            "Download Curated Benchmark",
+            data=normalized_payload,
+            file_name=_benchmark_repo_file_name(st.session_state.get("benchmark_editor_file_name", "")),
+            mime="application/json",
+            key="download_curated_benchmark",
+        )
+    elif validation_error:
+        st.caption(f"Current editor content is not valid JSON for benchmark scoring: {validation_error}")
+
+
+def _render_benchmark_evaluation() -> None:
+    if not st.session_state.job_id or not st.session_state.job_entities:
+        return
+
+    st.subheader("Benchmark Evaluation")
+    st.caption("Score this completed job against a curated benchmark JSON and review per-entity-type accuracy.")
+
+    benchmark_files = _available_benchmark_files()
+    source_options = []
+    if benchmark_files:
+        source_options.append("Repository benchmark")
+    source_options.append("Upload benchmark JSON")
+    source_mode = st.radio(
+        "Benchmark source",
+        source_options,
+        horizontal=True,
+        key="benchmark_eval_source_mode",
+    )
+
+    benchmark_payload = b""
+    benchmark_label = ""
+
+    if source_mode == "Repository benchmark":
+        selected_path = st.selectbox(
+            "Benchmark file",
+            options=benchmark_files,
+            format_func=lambda path: _benchmark_relative_name(path),
+            key="benchmark_eval_file",
+        )
+        benchmark_payload = selected_path.read_bytes()
+        benchmark_label = _benchmark_relative_name(selected_path)
+    else:
+        uploaded = st.file_uploader(
+            "Upload benchmark JSON",
+            type=["json"],
+            key="benchmark_eval_upload",
+        )
+        if uploaded is not None:
+            benchmark_payload = uploaded.getvalue()
+            benchmark_label = uploaded.name
+
+    if st.button("Run Benchmark Evaluation", key="run_benchmark_evaluation", disabled=not benchmark_payload):
+        try:
+            _prepare_benchmark_report(st.session_state.job_id, benchmark_payload, benchmark_label or "uploaded benchmark")
+            st.rerun()
+        except Exception as exc:
+            log_activity(
+                st.session_state,
+                "benchmark",
+                f"Benchmark evaluation failed for `{st.session_state.job_id}`",
+                level="error",
+                details=str(exc),
+            )
+            st.error(f"Benchmark evaluation failed: {exc}")
+
+    if st.session_state.get("benchmark_report_job_id") != st.session_state.job_id:
+        return
+
+    summary = st.session_state.get("benchmark_report_summary") or {}
+    rows = st.session_state.get("benchmark_report_rows") or []
+    if not summary or not rows:
+        return
+
+    st.caption(f"Benchmark: `{st.session_state.get('benchmark_report_name', '')}`")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Precision", f"{summary.get('precision', 0.0):.4f}")
+    c2.metric("Recall", f"{summary.get('recall', 0.0):.4f}")
+    c3.metric("F1", f"{summary.get('f1', 0.0):.4f}")
+    c4.metric("Matched", f"{summary.get('matched_count', 0)}/{summary.get('gold_count', 0)}")
+    c5, c6 = st.columns(2)
+    c5.metric("Attribute Accuracy", f"{summary.get('attribute_accuracy', 0.0):.4f}")
+    c6.metric("Source URL Accuracy", f"{summary.get('source_url_accuracy', 0.0):.4f}")
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    detail_payload = st.session_state.get("benchmark_report_details") or {}
+    detail_types = list((detail_payload.get("entity_types", {}) or {}).keys())
+    if detail_types:
+        selected_detail_type = st.selectbox(
+            "Entity type detail",
+            options=detail_types,
+            key="benchmark_report_detail_type",
+        )
+        detail = _benchmark_entity_detail(detail_payload, selected_detail_type)
+        st.caption(f"Detail for `{selected_detail_type}`")
+        if detail["matches"]:
+            st.dataframe(detail["matches"], use_container_width=True, hide_index=True)
+        if detail["missing"]:
+            st.write({"Missing expected entities": detail["missing"]})
+        if detail["unexpected"]:
+            st.write({"Unexpected predicted entities": detail["unexpected"]})
+
+    json_bytes = st.session_state.get("benchmark_report_json_bytes") or b""
+    md_bytes = st.session_state.get("benchmark_report_md_bytes") or b""
+    if json_bytes or md_bytes:
+        d1, d2 = st.columns(2)
+        if json_bytes:
+            d1.download_button(
+                "Download Benchmark Report JSON",
+                data=json_bytes,
+                file_name=f"{_safe_benchmark_filename(st.session_state.get('benchmark_report_name', 'benchmark'))}-report.json",
+                mime="application/json",
+                key="download_benchmark_report_json",
+            )
+        if md_bytes:
+            d2.download_button(
+                "Download Benchmark Report Markdown",
+                data=md_bytes,
+                file_name=f"{_safe_benchmark_filename(st.session_state.get('benchmark_report_name', 'benchmark'))}-report.md",
+                mime="text/markdown",
+                key="download_benchmark_report_md",
+            )
+
+
 def _render_outputs() -> None:
     if not st.session_state.job_id or st.session_state.crawl_running:
         return
@@ -501,6 +986,9 @@ def _render_outputs() -> None:
         st.subheader("Extracted Entities")
         summary = {key: len(value) for key, value in entities.items()}
         st.write(summary)
+        _render_benchmark_draft()
+        _render_benchmark_editor()
+        _render_benchmark_evaluation()
 
 
 def scrape_page() -> None:

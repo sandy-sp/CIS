@@ -96,3 +96,142 @@ def test_universal_extractor_builds_core_entities():
     assert entities["people"][0].attributes["title"] == "Director, Sales & BD"
     assert entities["events"][0].attributes["location"] == "Boston"
     assert any(entity.display_name == "Acme Biotech" for entity in entities["customers"])
+
+
+def test_universal_extractor_filters_noise_from_people_and_partners():
+    records = [
+        PageRecord(
+            url="https://example.com/partners",
+            normalized_url="https://example.com/partners",
+            domain="example.com",
+            path="/partners",
+            title="Our Partnerships | Example",
+            markdown=(
+                "# Our Partnerships\n\n"
+                "## AI & Semantics\n"
+                "* SciBite\n"
+                "* Smartlogic\n"
+                "## Interested in partnering with Zifo?\n"
+                "[ Know More ](/contact)\n"
+            ),
+            clean_text="SciBite Smartlogic",
+            page_category="partners",
+            status="success",
+            word_count=15,
+        ),
+        PageRecord(
+            url="https://example.com/our-people",
+            normalized_url="https://example.com/our-people",
+            domain="example.com",
+            path="/our-people",
+            title="Our People | Example",
+            markdown=(
+                "# Our People\n\n"
+                "* Careers\n"
+                "* Employee Stories\n"
+                "Christopher McClure\n"
+                "Director, Sales & BD\n"
+                "Suchitra Ramaswamy (Suchi)\n"
+                "Client Partner\n"
+                "[ Know More ](/our-culture)\n"
+            ),
+            clean_text="Christopher McClure Director, Sales & BD Suchitra Ramaswamy Client Partner",
+            page_category="people",
+            status="success",
+            word_count=20,
+        ),
+        PageRecord(
+            url="https://example.com/blogs/launch",
+            normalized_url="https://example.com/blogs/launch",
+            domain="example.com",
+            path="/blogs/launch",
+            title="Launch News",
+            markdown="[About Zifo](https://example.com/about)\n[Contact Us](https://example.com/contact)",
+            clean_text="About Zifo Contact Us",
+            page_category="resources",
+            status="success",
+            word_count=5,
+        ),
+    ]
+
+    entities = UniversalExtractor().extract(records, "example.com")
+
+    assert [entity.display_name for entity in entities["partners"]] == ["SciBite", "Smartlogic"]
+    assert [entity.display_name for entity in entities["people"]] == [
+        "Christopher McClure",
+        "Suchitra Ramaswamy (Suchi)",
+    ]
+
+
+def test_universal_extractor_extracts_multiple_events_from_listing_page():
+    record = PageRecord(
+        url="https://example.com/events",
+        normalized_url="https://example.com/events",
+        domain="example.com",
+        path="/events",
+        title="Events | Example",
+        description="Join us at leading science and data events.",
+        markdown=(
+            "## Scientific Informatics Experience Exchange (SiEE) | Boston April 14, 2026\n"
+            "Join us in Boston.\n"
+            "14\n"
+            "Apr\n"
+            "[Zifo Signature Event](https://example.com/events/category/zifo-signature-event/)\n"
+            "Scientific Informatics Experience Exchange (SiEE) | Boston April 14, 2026\n"
+            "Boston, MA\n"
+            "[View Details →](https://example.com/event/siee-boston-2026/)\n"
+            "07\n"
+            "Feb\n"
+            "[Industry Event](https://example.com/events/category/industry-event/)\n"
+            "SLAS 2026 International Conference & Exhibition\n"
+            "Boston, MA\n"
+            "[View Details →](https://example.com/event/slas-2026-international-conference-exhibition/)\n"
+        ),
+        clean_text="Scientific Informatics Experience Exchange Boston SLAS 2026 International Conference Exhibition",
+        page_category="events",
+        page_subtype="event",
+        status="success",
+        word_count=60,
+    )
+
+    entities = UniversalExtractor().extract([record], "example.com")
+
+    assert [entity.display_name for entity in entities["events"]] == [
+        "Scientific Informatics Experience Exchange (SiEE) | Boston April 14, 2026",
+        "SLAS 2026 International Conference & Exhibition",
+    ]
+    assert entities["events"][0].attributes["event_type"] == "company-hosted"
+    assert entities["events"][1].attributes["location"] == "Boston, MA"
+
+
+def test_universal_extractor_customers_require_case_study_evidence():
+    records = [
+        PageRecord(
+            url="https://example.com/blogs/vendor-selection",
+            normalized_url="https://example.com/blogs/vendor-selection",
+            domain="example.com",
+            path="/blogs/vendor-selection",
+            title="Vendor Selection",
+            markdown="# Vendor Selection\n\nPartnered with Large Language Models",
+            clean_text="Partnered with Large Language Models",
+            page_category="resources",
+            status="success",
+            word_count=6,
+        ),
+        PageRecord(
+            url="https://example.com/case-studies/acme",
+            normalized_url="https://example.com/case-studies/acme",
+            domain="example.com",
+            path="/case-studies/acme",
+            title="Acme Transformation Case Study",
+            markdown="# Acme Transformation Case Study\n\nCustomer: Acme Biotech",
+            clean_text="Customer: Acme Biotech",
+            page_category="case-studies",
+            status="success",
+            word_count=4,
+        ),
+    ]
+
+    entities = UniversalExtractor().extract(records, "example.com")
+
+    assert [entity.display_name for entity in entities["customers"]] == ["Acme Biotech"]
