@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from scraper.http_utils import get_with_ssl_fallback
+
 
 class Snooper:
     """Pre-crawl intelligence: llm.txt, robots.txt, noindex/nofollow detection."""
@@ -64,7 +66,7 @@ class Snooper:
     def _fetch_llm_urls(self) -> list[str]:
         """Return http URLs listed in llm.txt, if present."""
         try:
-            r = requests.get(
+            r = get_with_ssl_fallback(
                 f"{self.base_url}/llm.txt",
                 headers={"User-Agent": self.USER_AGENT},
                 timeout=10,
@@ -82,7 +84,7 @@ class Snooper:
         robots_url = f"{self.base_url}/robots.txt"
         self._rp.set_url(robots_url)
         try:
-            r = requests.get(
+            r = get_with_ssl_fallback(
                 robots_url,
                 headers={"User-Agent": self.USER_AGENT},
                 timeout=10,
@@ -126,7 +128,7 @@ class Snooper:
         if not sitemap_roots:
             for path in ("/sitemap.xml", "/sitemap_index.xml", "/sitemap"):
                 try:
-                    r = requests.get(
+                    r = get_with_ssl_fallback(
                         f"{self.base_url}{path}",
                         headers={"User-Agent": self.USER_AGENT},
                         timeout=10,
@@ -150,7 +152,7 @@ class Snooper:
             return []
 
         try:
-            r = requests.get(
+            r = get_with_ssl_fallback(
                 url,
                 headers={"User-Agent": self.USER_AGENT},
                 timeout=15,

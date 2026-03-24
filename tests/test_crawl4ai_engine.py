@@ -123,3 +123,23 @@ async def test_scrape_timeout_returns_failed(engine):
     assert result.status == "failed"
     assert result.skip_reason == "crawl4ai timeout"
     assert links == []
+
+
+@pytest.mark.asyncio
+async def test_scrape_disables_engine_after_driver_failure(engine):
+    with patch("scraper.crawl4ai_engine.AsyncWebCrawler") as MockCrawler:
+        mock_crawler = AsyncMock()
+        mock_crawler.arun = AsyncMock(side_effect=Exception("Connection.init: Connection closed while reading from the driver"))
+        MockCrawler.return_value.__aenter__ = AsyncMock(return_value=mock_crawler)
+        MockCrawler.return_value.__aexit__ = AsyncMock(return_value=None)
+
+        first_result, first_links = await engine.scrape("https://example.com/js")
+        second_result, second_links = await engine.scrape("https://example.com/js-2")
+
+    assert first_result.status == "failed"
+    assert first_result.skip_reason == "crawl4ai unavailable: playwright driver unavailable"
+    assert second_result.status == "failed"
+    assert second_result.skip_reason == "crawl4ai unavailable: playwright driver unavailable"
+    assert first_links == []
+    assert second_links == []
+    assert mock_crawler.arun.await_count == 1

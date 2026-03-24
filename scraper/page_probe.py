@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 import requests
 from bs4 import BeautifulSoup
 
+from scraper.http_utils import get_with_ssl_fallback
+
 
 _JS_MARKERS = (
     "__next_data__",
@@ -36,7 +38,7 @@ class EngineRouter:
 
     def probe(self, url: str) -> ProbeResult:
         try:
-            resp = requests.get(
+            resp = get_with_ssl_fallback(
                 url,
                 headers={"User-Agent": self.USER_AGENT},
                 timeout=self.timeout,

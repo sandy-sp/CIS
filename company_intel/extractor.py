@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from urllib.parse import urlparse
 
 from company_intel.models import ExtractedEntity, PageRecord
@@ -33,6 +34,10 @@ _LINKEDIN_PROFILE = re.compile(
     r"https?://(?:www\.|[a-z]{2}\.)?linkedin\.com/in/([a-zA-Z0-9\-_%]+)/?",
     re.IGNORECASE,
 )
+_MEET_THE_EXPERT = re.compile(
+    r"^Meet(?: the Expert:)?\s+(?P<name>[^,]+),\s+(?P<title>.+)$",
+    re.IGNORECASE,
+)
 _CUSTOMER_PATTERNS = [
     re.compile(
         r"^(?:customer|client|company|organization)\s*[:\-]\s*([A-Z][A-Za-z0-9&.,'/-]+(?:\s+[A-Z][A-Za-z0-9&.,'/-]+){0,5})$",
@@ -58,7 +63,7 @@ _PARTNER_PATH_HINT = re.compile(
     re.IGNORECASE,
 )
 _PEOPLE_PATH_HINT = re.compile(
-    r"/(?:team|people|leadership|experts|staff|our[-_]people)(?:/|$)",
+    r"/(?:team|people|leadership|experts|staff|our[-_]people|meet-the-expert(?:-|/|$))(?:/|$)?",
     re.IGNORECASE,
 )
 _MONTH_NAME_BY_ABBR = {
@@ -90,6 +95,17 @@ _PERSON_GENERIC_LINES = {
     "our global teams",
     "our people",
 }
+_PERSON_ORG_SUFFIXES = {
+    "department",
+    "information",
+    "operations",
+    "platform",
+    "services",
+    "solutions",
+    "systems",
+    "team",
+    "technologies",
+}
 _CUSTOMER_GENERIC_NAMES = {
     "ai",
     "client",
@@ -119,6 +135,15 @@ _CUSTOMER_GENERIC_NAMES = {
     "whole genome sequencing",
     "winning",
 }
+_SERVICE_ENTITY_HINT = re.compile(
+    r"\b(service|services|solution|solutions|consulting|training|support|platform|operations|compliance)\b",
+    re.IGNORECASE,
+)
+_EVENT_RESOURCE_HINT = re.compile(r"\bresources?\b", re.IGNORECASE)
+_SERVICE_TITLE_NOISE_HINT = re.compile(
+    r"^(?:Head of|Fuel |Jumpstart |Protect |Supercharge |Paradigm Shift)",
+    re.IGNORECASE,
+)
 
 
 def _normalize_key(value: str) -> str:
@@ -162,6 +187,7 @@ def _add_entity(bucket: dict[str, ExtractedEntity], entity: ExtractedEntity) -> 
 class UniversalExtractor:
     def extract(self, records: list[PageRecord], company_domain: str) -> dict[str, list[ExtractedEntity]]:
         successful = [record for record in records if record.status == "success"]
+        successful = self._filter_primary_language(successful)
         buckets: dict[str, dict[str, ExtractedEntity]] = {
             "company_profile": {},
             "services": {},
@@ -217,6 +243,8 @@ class UniversalExtractor:
         entity_type = entity_type or category[:-1]
         for record in records:
             if record.page_category != category or record.is_duplicate:
+                continue
+            if category == "services" and not self._should_extract_service(record):
                 continue
             name = _clean_title(record.title, record.domain)
             if not name:
@@ -291,6 +319,22 @@ class UniversalExtractor:
                 continue
             markdown_lines = [line.strip() for line in record.markdown.splitlines() if line.strip()]
 
+            for line in markdown_lines:
+                parsed = self._parse_person_heading(line)
+                if not parsed:
+                    continue
+                name, title = parsed
+                entity = ExtractedEntity(
+                    entity_type="person",
+                    normalized_key=_normalize_key(name),
+                    display_name=name,
+                    attributes={"title": title, "linkedin_url": ""},
+                    source_urls=[record.url],
+                    evidence_snippets=[name],
+                    confidence="high",
+                )
+                _add_entity(bucket, entity)
+
             for idx, line in enumerate(markdown_lines):
                 name = self._clean_markdown_text(line)
                 if not self._looks_like_person_name(name):
@@ -354,6 +398,8 @@ class UniversalExtractor:
                 continue
             if self._is_event_listing_page(record):
                 self._extract_event_listing(record, bucket)
+                continue
+            if self._is_event_noise_page(record):
                 continue
             name = _clean_title(record.title, record.domain)
             if not name or not self._looks_like_event_name(name):
@@ -450,6 +496,8 @@ class UniversalExtractor:
         return value, ""
 
     def _guess_person_name(self, link_text: str, url: str) -> str:
+        if not self._looks_like_person_link(url):
+            return ""
         words = self._clean_markdown_text(link_text).split()
         if 2 <= len(words) <= 4 and all(word[:1].isupper() for word in words):
             return " ".join(words)
@@ -457,6 +505,12 @@ class UniversalExtractor:
         if not match:
             return ""
         return self._slug_to_name(match.group(1))
+
+    def _looks_like_person_link(self, url: str) -> bool:
+        if _LINKEDIN_PROFILE.search(url):
+            return True
+        path = urlparse(url).path.lower()
+        return bool(re.search(r"/(?:team|people|leadership|experts|staff|author|bio)/[a-z0-9\-]+/?$", path))
 
     def _slug_to_name(self, slug: str) -> str:
         parts = []
@@ -495,11 +549,24 @@ class UniversalExtractor:
         words = [word for word in re.split(r"\s+", line) if word]
         if not (2 <= len(words) <= 4 or (len(words) == 1 and "-" in line)):
             return False
+        if words and words[-1].casefold() in _PERSON_ORG_SUFFIXES:
+            return False
         if not all(word[0].isupper() for word in words if word[0].isalpha()):
             return False
         if _TITLE_HINTS.search(line) and not any(word.endswith(".") for word in words):
             return False
         return True
+
+    def _parse_person_heading(self, line: str) -> tuple[str, str] | None:
+        text = self._clean_markdown_text(line)
+        match = _MEET_THE_EXPERT.match(text)
+        if not match:
+            return None
+        name = self._clean_markdown_text(match.group("name"))
+        title = self._clean_markdown_text(match.group("title"))
+        if not self._looks_like_person_name(name) or not title:
+            return None
+        return name, title
 
     def _clean_markdown_text(self, value: str) -> str:
         value = value.strip().lstrip("#").strip()
@@ -557,7 +624,7 @@ class UniversalExtractor:
             bool(_PEOPLE_PATH_HINT.search(record.path or ""))
             or (
                 record.page_category == "people"
-                and bool(re.search(r"\b(people|leadership|team|experts|staff)\b", record.title or "", re.IGNORECASE))
+                and bool(re.search(r"\b(people|leadership|team|expert|experts|staff)\b", record.title or "", re.IGNORECASE))
             )
         )
 
@@ -572,7 +639,32 @@ class UniversalExtractor:
         return ""
 
     def _is_event_listing_page(self, record: PageRecord) -> bool:
-        return (record.path or "").rstrip("/") == "/events"
+        path = (record.path or "").rstrip("/")
+        return path in {"/events", "/company/events"}
+
+    def _is_event_noise_page(self, record: PageRecord) -> bool:
+        path = (record.path or "").lower()
+        title = self._clean_markdown_text(record.title or "")
+        if path.endswith("-resources") or "/resources" in path:
+            return True
+        if "-meet-with-" in path:
+            return True
+        if "| meet with" in title.lower():
+            return True
+        if _EVENT_RESOURCE_HINT.search(title):
+            return True
+        return False
+
+    def _should_extract_service(self, record: PageRecord) -> bool:
+        path = (record.path or "").lower()
+        title = self._clean_markdown_text(record.title or "")
+        if path.startswith("/services/"):
+            return True
+        if _SERVICE_TITLE_NOISE_HINT.search(title):
+            return False
+        if "/solutions/" in path:
+            return bool(_SERVICE_ENTITY_HINT.search(title))
+        return bool(_SERVICE_ENTITY_HINT.search(title))
 
     def _extract_event_listing(self, record: PageRecord, bucket: dict[str, ExtractedEntity]) -> None:
         lines = [line.strip() for line in record.markdown.splitlines() if line.strip()]
@@ -703,3 +795,18 @@ class UniversalExtractor:
         if len(normalized.split()) == 1 and len(normalized) < 4:
             return False
         return True
+
+    def _filter_primary_language(self, records: list[PageRecord]) -> list[PageRecord]:
+        language_counts = Counter(
+            record.language
+            for record in records
+            if record.source_type == "internal" and record.language
+        )
+        if not language_counts:
+            return records
+        primary_language, _ = language_counts.most_common(1)[0]
+        return [
+            record
+            for record in records
+            if record.source_type != "internal" or not record.language or record.language == primary_language
+        ]

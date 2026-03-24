@@ -41,3 +41,36 @@ def test_classifier_detects_resources_news_subtype():
     )
     assert category == "resources"
     assert subtype == "news"
+
+
+def test_classifier_detects_thought_leadership_as_resources_article():
+    category, subtype, confidence = PageClassifier().classify(
+        _record("https://example.com/thought-leadership/fda-guidance", title="FDA Guidance Update")
+    )
+    assert category == "resources"
+    assert subtype == "article"
+
+
+def test_classifier_detects_press_as_resources_news():
+    category, subtype, confidence = PageClassifier().classify(
+        _record("https://example.com/press/new-ceo", title="Company Names New CEO")
+    )
+    assert category == "resources"
+    assert subtype == "news"
+
+
+def test_classifier_marks_landing_and_thank_you_pages_as_other():
+    category, subtype, confidence = PageClassifier().classify(
+        _record("https://example.com/ty/thank-you-demo", title="Thank You")
+    )
+    assert category == "other"
+
+
+def test_classifier_detects_case_study_title_under_article_path():
+    category, subtype, confidence = PageClassifier().classify(
+        _record(
+            "https://example.com/thought-leadership/acme-success",
+            title="Acme Success Story - A Case Study",
+        )
+    )
+    assert category == "case-studies"

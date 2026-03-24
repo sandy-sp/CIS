@@ -1,5 +1,6 @@
 # scraper/crawl4ai_engine.py
 import asyncio
+import re
 
 from crawl4ai import AsyncWebCrawler, CacheMode
 from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
@@ -16,6 +17,11 @@ class Crawl4AIEngine:
     """Primary scraping engine using Crawl4AI + Playwright."""
 
     USER_AGENT = "Business-Scraper/1.0"
+    _DISABLE_PATTERNS = (
+        re.compile(r"cannot find module .+playwright/.+cli\.js", re.IGNORECASE),
+        re.compile(r"connection closed while reading from the driver", re.IGNORECASE),
+        re.compile(r"playwright.+not found", re.IGNORECASE),
+    )
 
     async def scrape(self, url: str) -> tuple[PageResult, list[str]]:
         """
@@ -25,6 +31,11 @@ class Crawl4AIEngine:
         """
         result = PageResult(url=url, engine_used="crawl4ai")
         links: list[str] = []
+        disabled_reason = getattr(self, "_disabled_reason", "")
+        if disabled_reason:
+            result.status = "failed"
+            result.skip_reason = f"crawl4ai unavailable: {disabled_reason}"
+            return result, links
 
         try:
             browser_config = BrowserConfig(
@@ -72,7 +83,16 @@ class Crawl4AIEngine:
             result.status = "failed"
             result.skip_reason = "crawl4ai timeout"
         except Exception as exc:
+            if self._is_driver_unavailable_error(exc):
+                self._disabled_reason = "playwright driver unavailable"
+                result.status = "failed"
+                result.skip_reason = f"crawl4ai unavailable: {self._disabled_reason}"
+                return result, links
             result.status = "failed"
             result.skip_reason = f"crawl4ai error: {exc}"
 
         return result, links
+
+    def _is_driver_unavailable_error(self, exc: Exception) -> bool:
+        message = str(exc or "")
+        return any(pattern.search(message) for pattern in self._DISABLE_PATTERNS)

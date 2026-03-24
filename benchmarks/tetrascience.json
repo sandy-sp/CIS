@@ -1,0 +1,127 @@
+{
+  "name": "TetraScience Benchmark",
+  "company_domain": "tetrascience.com",
+  "notes": "Curated partial benchmark focused on clear first-party services, event pages, and resource hubs from the TetraScience crawl.",
+  "entities": {
+    "events": [
+      {
+        "name": "Bio-IT World 2024",
+        "aliases": [],
+        "attribute_checks": {
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/event/bioit-world"
+        ],
+        "notes": "Primary event landing page for Bio-IT World 2024."
+      },
+      {
+        "name": "BioTechX Europe 2024",
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "October 10, 2024"
+          },
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/event/biotechx-europe-2024"
+        ],
+        "notes": "Date is stated directly on the event page."
+      },
+      {
+        "name": "BioTechX USA 2024",
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "September 18, 2024"
+          },
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/event/biotechx-usa-2024"
+        ],
+        "notes": "Date is stated directly on the event page."
+      },
+      {
+        "name": "SLAS February 3-7, 2024",
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "February 3-7, 2024"
+          },
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/event/slas"
+        ],
+        "notes": "First-party SLAS event page."
+      }
+    ],
+    "resources": [
+      {
+        "name": "Blog",
+        "aliases": [],
+        "attribute_checks": {
+          "resource_type": {
+            "equals": "blog"
+          }
+        },
+        "source_url_contains": [
+          "/blog"
+        ],
+        "notes": "Top-level blog hub."
+      },
+      {
+        "name": "Explore TetraScience Resources",
+        "aliases": [],
+        "attribute_checks": {
+          "resource_type": {
+            "equals": "resource"
+          }
+        },
+        "source_url_contains": [
+          "/resources"
+        ],
+        "notes": "Top-level resources hub."
+      }
+    ],
+    "services": [
+      {
+        "name": "Customer Success",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/customersuccess"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Professional Services",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/ps"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Tetra Training",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/tetratraining"
+        ],
+        "notes": "Canonical service detail page."
+      }
+    ]
+  }
+}

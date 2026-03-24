@@ -5,6 +5,7 @@ import html2text
 from bs4 import BeautifulSoup
 
 from models import PageResult
+from scraper.http_utils import get_with_ssl_fallback
 
 
 class StaticEngine:
@@ -13,7 +14,7 @@ class StaticEngine:
     def scrape(self, url: str) -> PageResult:
         result = PageResult(url=url, engine_used="static")
         try:
-            resp = requests.get(
+            resp = get_with_ssl_fallback(
                 url,
                 headers={"User-Agent": self.USER_AGENT},
                 timeout=20,

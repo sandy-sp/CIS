@@ -12,6 +12,7 @@ from company_intel.classifier import PageClassifier
 from company_intel.cleaner import CorpusCleaner
 from company_intel.models import PageRecord
 from company_intel.review import external_review_status
+from scraper.http_utils import get_with_ssl_fallback
 from scraper.static_engine import StaticEngine
 
 
@@ -94,7 +95,7 @@ class DuckDuckGoSearchProvider:
 
     def search(self, query: str, limit: int = 5) -> list[SearchResult]:
         try:
-            response = requests.get(
+            response = get_with_ssl_fallback(
                 self.SEARCH_URL,
                 params={"q": query},
                 headers={"User-Agent": self.USER_AGENT},

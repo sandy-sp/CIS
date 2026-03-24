@@ -1,0 +1,397 @@
+{
+  "name": "ProPharma Group Benchmark",
+  "company_domain": "propharmagroup.com",
+  "notes": "Curated benchmark from the completed 180-page ProPharma crawl. This benchmark covers verified first-party services, meet-the-expert people pages, event pages, and case studies.",
+  "entities": {
+    "case_studies": [
+      {
+        "name": "Case Study: Product Quality and Safety Issues with Global Collaboration",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/resources/global-collaboration-tackles-product-quality-complaints-safety-issues"
+        ],
+        "notes": "Resource page explicitly labeled as a case study."
+      },
+      {
+        "name": "FDA Thinking on Biosimilar Immunogenicity Issues",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/thought-leadership/fda-biosimilar-immunogenicity-anda"
+        ],
+        "notes": "Thought leadership page explicitly labeled as a case study."
+      },
+      {
+        "name": "Quality and Analytical Scientist Case Study",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/resources/quality-and-analytical-scientist"
+        ],
+        "notes": "Resource page explicitly labeled as a case study."
+      },
+      {
+        "name": "SOPs and Processing Mapping Case Study",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/resources/sops-and-processing-mapping"
+        ],
+        "notes": "Resource page explicitly labeled as a case study."
+      }
+    ],
+    "events": [
+      {
+        "name": "16th Annual Outsourcing in Clinical Trials East Coast 2025 (OCT East Coast)",
+        "aliases": [],
+        "attribute_checks": {
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/events/16th-annual-outsourcing-in-clinical-trials-east-coast-2025-oct-east-coast"
+        ],
+        "notes": "First-party event page."
+      },
+      {
+        "name": "2024 AMWA Medical Writing & Communication Conference 2024",
+        "aliases": [],
+        "attribute_checks": {
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/events/2024-amwa-medical-writing-communication-conference-2024"
+        ],
+        "notes": "First-party event page."
+      },
+      {
+        "name": "Biomanufacturing World Summit 2025",
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "November 10–12, 2025"
+          },
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/events/biomanufacturing-world-summit-2025"
+        ],
+        "notes": "Date is stated in the event intro paragraph."
+      },
+      {
+        "name": "DIA Japan 2025: Meet with ProPharma",
+        "aliases": [],
+        "attribute_checks": {
+          "date": {
+            "equals": "October 19–21, 2025"
+          },
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/events/dia-japan-2025"
+        ],
+        "notes": "Date is stated in the event intro paragraph."
+      },
+      {
+        "name": "DIA Medical Affairs and Scientific Communications Forum 2024",
+        "aliases": [],
+        "attribute_checks": {
+          "event_type": {
+            "equals": "industry"
+          }
+        },
+        "source_url_contains": [
+          "/events/dia-medical-affairs-and-scientific-communications-forum-2024"
+        ],
+        "notes": "First-party event page."
+      },
+      {
+        "name": "Indian Society for Clinical Research 17th Annual Conference",
+        "aliases": [],
+        "attribute_checks": {
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "India"
+          }
+        },
+        "source_url_contains": [
+          "/events/icsr-2024"
+        ],
+        "notes": "Location is stated directly on the event page."
+      },
+      {
+        "name": "PMWS Pharma Manufacturing World Summit 2024",
+        "aliases": [],
+        "attribute_checks": {
+          "event_type": {
+            "equals": "industry"
+          },
+          "location": {
+            "equals": "Boston"
+          }
+        },
+        "source_url_contains": [
+          "/events/pmws-pharma-manufacturing-world-summit-2024"
+        ],
+        "notes": "Location is stated directly on the event page."
+      }
+    ],
+    "people": [
+      {
+        "name": "Amy Scalise",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Associate Director, Decentralized Clinical Trial Management"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-amy-scalise"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      },
+      {
+        "name": "Demis N. Lipe",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Senior Medical Director"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-demis-n-lipe"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      },
+      {
+        "name": "Janice Worley",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Vice President, Medical Writing"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-janice-worley"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      },
+      {
+        "name": "Kimberly Futch",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Director, Clinical Operations Strategy"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-kimberly-futch"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      },
+      {
+        "name": "Rodrigo Perez",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Associate Director, Computer System Validation"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-rodrigo-perez"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      },
+      {
+        "name": "Savannah Kay Anzaldua",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Senior Product Complaint Specialist, Magnolia PC Team"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-savannah-kay-anzaldua"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      },
+      {
+        "name": "Terri Levine",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Principal Medical Writer"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-terri-levine"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      },
+      {
+        "name": "Valerie Huh",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Associate Director, Global Innovation and Implementation"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-valerie-huh"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      },
+      {
+        "name": "Warren Vieira",
+        "aliases": [],
+        "attribute_checks": {
+          "title": {
+            "contains": "Senior Manager, Research Platforms Manager"
+          }
+        },
+        "source_url_contains": [
+          "/thought-leadership/meet-the-expert-warren-vieira"
+        ],
+        "notes": "Name and title appear in the H2 heading."
+      }
+    ],
+    "services": [
+      {
+        "name": "Advertising & Promotional Review Consulting Services",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/regulatory-sciences/advertising-promotional-review"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Data Integrity Services, Training, and Assessments",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/quality-and-compliance/data-integrity"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Electronic Trial Master File (eTMF) Services from ProPhama",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/digital-transformation/electronic-trial-master-file-etmf"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "European Marketing Authorization Holder (MAH)",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/regulatory-sciences/marketing-authorization-holder-partner"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "FDA Form 483 Observations & Warning Letters Consulting & Remediation",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/quality-and-compliance/483-forms-and-inspections"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Global Literature Review, Search, Screening, and Monitoring",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/pharmacovigilance/global-literature-review"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Global Medical Information Services",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/medical-information"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Good Laboratory Practices (GLP)",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/quality-and-compliance/good-laboratory-practices-glp"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Medical Device & Diagnostic Audit Services and Consulting",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/quality-and-compliance/medical-device-audits"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "QA/AI Compliance Services for Pharma, Biotech, and Medical Devices",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/quality-and-compliance/qa-ai-ml-quality-compliance-services"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Quality & Compliance Services for Pharma, Biotech, and Medical Devices",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/quality-and-compliance-ga"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Regulatory Operations (RegOps) Consulting Services",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/regulatory-sciences/fda-regulatory-consulting/regulatory-operations"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "Remediation and Response Services for Regulatory and GxP",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/quality-and-compliance/remediation-and-response-services"
+        ],
+        "notes": "Canonical service detail page."
+      },
+      {
+        "name": "US FDA Regulatory Affairs Consulting",
+        "aliases": [],
+        "attribute_checks": {},
+        "source_url_contains": [
+          "/services/regulatory-sciences/fda-regulatory-consulting"
+        ],
+        "notes": "Canonical service detail page."
+      }
+    ]
+  }
+}

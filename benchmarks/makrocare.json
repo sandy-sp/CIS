@@ -1,0 +1,87 @@
+{
+  "name": "MakroCare Benchmark",
+  "company_domain": "makrocare.com",
+  "notes": "Scoped benchmark from the completed 60-page MakroCare crawl. This crawl primarily covered the homepage and blog corpus, so the benchmark is intentionally resource-focused.",
+  "entities": {
+    "resources": [
+      {
+        "name": "AI, Data, and Algorithms in Medical Device Certification & Healthcare",
+        "aliases": [],
+        "attribute_checks": {
+          "resource_type": {
+            "equals": "blog"
+          }
+        },
+        "source_url_contains": [
+          "/blog/implications-of-ai-on-medical-device-technology-and-certification"
+        ],
+        "notes": "First-party MakroCare blog article."
+      },
+      {
+        "name": "Aug 2024 Medical Device Regulatory Updates: USA, Europe, Asia",
+        "aliases": [],
+        "attribute_checks": {
+          "resource_type": {
+            "equals": "blog"
+          }
+        },
+        "source_url_contains": [
+          "/blog/medical-devices-usa-europe-asia-regulatory-updates-roundup-aug-2024"
+        ],
+        "notes": "First-party MakroCare blog article."
+      },
+      {
+        "name": "Blog",
+        "aliases": [],
+        "attribute_checks": {
+          "resource_type": {
+            "equals": "blog"
+          }
+        },
+        "source_url_contains": [
+          "/blog"
+        ],
+        "notes": "Top-level blog hub."
+      },
+      {
+        "name": "Clinical Evaluation Report (CER): EU MDR Requirements & Best Practices",
+        "aliases": [],
+        "attribute_checks": {
+          "resource_type": {
+            "equals": "blog"
+          }
+        },
+        "source_url_contains": [
+          "/blog/clinical-evaluation-report-cer-a-complete-regulatory-guide"
+        ],
+        "notes": "First-party MakroCare blog article."
+      },
+      {
+        "name": "Early Regulatory Strategy: Key to Faster Drug Approvals",
+        "aliases": [],
+        "attribute_checks": {
+          "resource_type": {
+            "equals": "blog"
+          }
+        },
+        "source_url_contains": [
+          "/blog/how-early-regulatory-strategy-shapes-faster-drug-approvals"
+        ],
+        "notes": "First-party MakroCare blog article."
+      },
+      {
+        "name": "Global Pharma & Biotech Regulatory Updates – Jan 2025",
+        "aliases": [],
+        "attribute_checks": {
+          "resource_type": {
+            "equals": "blog"
+          }
+        },
+        "source_url_contains": [
+          "/blog/pharmabiotech-usa-europe-and-asia-regulatory-updates-roundup-jan-2025"
+        ],
+        "notes": "First-party MakroCare blog article."
+      }
+    ]
+  }
+}

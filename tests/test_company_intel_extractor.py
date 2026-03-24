@@ -235,3 +235,164 @@ def test_universal_extractor_customers_require_case_study_evidence():
     entities = UniversalExtractor().extract(records, "example.com")
 
     assert [entity.display_name for entity in entities["customers"]] == ["Acme Biotech"]
+
+
+def test_universal_extractor_parses_meet_the_expert_headings():
+    record = PageRecord(
+        url="https://example.com/thought-leadership/meet-the-expert-amy-scalise",
+        normalized_url="https://example.com/thought-leadership/meet-the-expert-amy-scalise",
+        domain="example.com",
+        path="/thought-leadership/meet-the-expert-amy-scalise",
+        title="Meet the Expert: Amy Scalise",
+        markdown=(
+            'Our "Meet the Expert" series.\n'
+            "## Meet Amy Scalise, Associate Director, Decentralized Clinical Trial Management\n"
+            "### What do you do at Example?\n"
+        ),
+        clean_text="Meet Amy Scalise, Associate Director, Decentralized Clinical Trial Management",
+        page_category="people",
+        status="success",
+        word_count=18,
+    )
+
+    entities = UniversalExtractor().extract([record], "example.com")
+
+    assert [entity.display_name for entity in entities["people"]] == ["Amy Scalise"]
+    assert entities["people"][0].attributes["title"] == "Associate Director, Decentralized Clinical Trial Management"
+
+
+def test_universal_extractor_filters_non_primary_language_records():
+    records = [
+        PageRecord(
+            url="https://example.com/services/data-platform",
+            normalized_url="https://example.com/services/data-platform",
+            domain="example.com",
+            path="/services/data-platform",
+            title="Data Platform Services",
+            markdown="# Data Platform Services",
+            clean_text="Data Platform Services",
+            page_category="services",
+            language="en",
+            status="success",
+            word_count=3,
+        ),
+        PageRecord(
+            url="https://example.com/ja/services/data-platform",
+            normalized_url="https://example.com/ja/services/data-platform",
+            domain="example.com",
+            path="/ja/services/data-platform",
+            title="データプラットフォームサービス",
+            markdown="# データプラットフォームサービス",
+            clean_text="データプラットフォームサービス",
+            page_category="services",
+            language="ja",
+            status="success",
+            word_count=1,
+        ),
+    ]
+
+    entities = UniversalExtractor().extract(records, "example.com")
+
+    assert [entity.display_name for entity in entities["services"]] == ["Data Platform Services"]
+
+
+def test_universal_extractor_skips_event_resource_and_meeting_pages():
+    records = [
+        PageRecord(
+            url="https://example.com/event/bio-it-world-2024-resources",
+            normalized_url="https://example.com/event/bio-it-world-2024-resources",
+            domain="example.com",
+            path="/event/bio-it-world-2024-resources",
+            title="Bio-IT World 2024 Resources",
+            markdown="# Bio-IT World 2024 Resources",
+            clean_text="Bio-IT World 2024 Resources",
+            page_category="events",
+            status="success",
+            word_count=5,
+        ),
+        PageRecord(
+            url="https://example.com/event/bio-it-world-2024-meet-with-example",
+            normalized_url="https://example.com/event/bio-it-world-2024-meet-with-example",
+            domain="example.com",
+            path="/event/bio-it-world-2024-meet-with-example",
+            title="Bio-IT World 2024 | Meet with Example",
+            markdown="# Bio-IT World 2024 | Meet with Example",
+            clean_text="Bio-IT World 2024 | Meet with Example",
+            page_category="events",
+            status="success",
+            word_count=7,
+        ),
+        PageRecord(
+            url="https://example.com/event/bio-it-world",
+            normalized_url="https://example.com/event/bio-it-world",
+            domain="example.com",
+            path="/event/bio-it-world",
+            title="Bio-IT World 2024",
+            description="Join us on April 15, 2024.",
+            markdown="# Bio-IT World 2024\n\nJoin us on April 15, 2024.",
+            clean_text="Join us on April 15, 2024.",
+            page_category="events",
+            status="success",
+            word_count=8,
+        ),
+    ]
+
+    entities = UniversalExtractor().extract(records, "example.com")
+
+    assert [entity.display_name for entity in entities["events"]] == ["Bio-IT World 2024"]
+
+
+def test_universal_extractor_skips_marketing_solution_pages_without_service_hints():
+    records = [
+        PageRecord(
+            url="https://example.com/solutions/development",
+            normalized_url="https://example.com/solutions/development",
+            domain="example.com",
+            path="/solutions/development",
+            title="Head of Development",
+            markdown="# Get access to better data",
+            clean_text="Get access to better data",
+            page_category="services",
+            status="success",
+            word_count=6,
+        ),
+        PageRecord(
+            url="https://example.com/services/professional-services",
+            normalized_url="https://example.com/services/professional-services",
+            domain="example.com",
+            path="/services/professional-services",
+            title="Professional Services",
+            markdown="# Professional Services",
+            clean_text="Professional Services",
+            page_category="services",
+            status="success",
+            word_count=4,
+        ),
+    ]
+
+    entities = UniversalExtractor().extract(records, "example.com")
+
+    assert [entity.display_name for entity in entities["services"]] == ["Professional Services"]
+
+
+def test_universal_extractor_skips_non_person_tag_links_in_people_pages():
+    record = PageRecord(
+        url="https://example.com/thought-leadership/meet-the-expert-amy-scalise",
+        normalized_url="https://example.com/thought-leadership/meet-the-expert-amy-scalise",
+        domain="example.com",
+        path="/thought-leadership/meet-the-expert-amy-scalise",
+        title="Meet the Expert: Amy Scalise",
+        markdown=(
+            "## Meet Amy Scalise, Associate Director\n"
+            "[Clinical Research Solutions](https://example.com/thought-leadership/tag/clinical-research-solutions)\n"
+            "Why Partner with a CRO that has In-House DCT Capabilities?\n"
+        ),
+        clean_text="Meet Amy Scalise, Associate Director Clinical Research Solutions",
+        page_category="resources",
+        status="success",
+        word_count=12,
+    )
+
+    entities = UniversalExtractor().extract([record], "example.com")
+
+    assert [entity.display_name for entity in entities["people"]] == ["Amy Scalise"]
