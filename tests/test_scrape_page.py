@@ -1,6 +1,6 @@
 import json
 
-from company_intel.models import CrawlSettings, ExtractedEntity
+from company_intel.models import CrawlSettings, ExtractedEntity, PageRecord
 from company_intel.storage import JobStorage
 from pages.scrape_page import (
     _benchmark_entity_detail,
@@ -10,6 +10,8 @@ from pages.scrape_page import (
     _external_review_rows,
     _normalize_benchmark_payload,
     _save_curated_benchmark,
+    _should_auto_refresh_scrape_page,
+    sync_active_crawl_state,
 )
 
 
@@ -248,3 +250,101 @@ def test_save_curated_benchmark_sanitizes_file_name_and_writes_json(tmp_path):
     assert summary == {"services": 1}
     body = json.loads(output_path.read_text(encoding="utf-8"))
     assert body["name"] == "Example Benchmark"
+
+
+def test_should_auto_refresh_scrape_page_only_on_scrape_with_live_queue():
+    assert _should_auto_refresh_scrape_page({
+        "crawl_running": True,
+        "result_queue": object(),
+        "current_page": "Scrape",
+    }) is True
+    assert _should_auto_refresh_scrape_page({
+        "crawl_running": True,
+        "result_queue": object(),
+        "current_page": "Index",
+    }) is False
+    assert _should_auto_refresh_scrape_page({
+        "crawl_running": True,
+        "result_queue": None,
+        "current_page": "Scrape",
+    }) is False
+
+
+def test_sync_active_crawl_state_restores_active_job_from_storage(tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    job.status = "crawling"
+    job.pages_scraped = 2
+    storage.save_job(job)
+    storage.save_page_record(
+        job.job_id,
+        PageRecord(
+            url="https://example.com/services/data-platform",
+            normalized_url="https://example.com/services/data-platform",
+            domain="example.com",
+            path="/services/data-platform",
+            title="Data Platform",
+            raw_text="Data platform services",
+            clean_text="Data platform services",
+            markdown="Data platform services",
+            page_category="services",
+            status="success",
+            engine_selected="scrapy",
+            engine_used="scrapy",
+            word_count=3,
+        ),
+    )
+
+    state = {}
+    sync_active_crawl_state(state, storage=storage)
+
+    assert state["crawl_running"] is True
+    assert state["job_id"] == job.job_id
+    assert state["job_data"]["status"] == "crawling"
+    assert state["selected_job_id"] == job.job_id
+    assert state["recent_records"][0]["url"] == "https://example.com/services/data-platform"
+    assert state["job_records"] == []
+
+
+def test_sync_active_crawl_state_loads_outputs_for_completed_tracked_job(tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    job.status = "completed"
+    storage.save_job(job)
+    storage.save_page_record(
+        job.job_id,
+        PageRecord(
+            url="https://example.com/services/data-platform",
+            normalized_url="https://example.com/services/data-platform",
+            domain="example.com",
+            path="/services/data-platform",
+            title="Data Platform",
+            raw_text="Data platform services",
+            clean_text="Data platform services",
+            markdown="Data platform services",
+            page_category="services",
+            status="success",
+            engine_selected="scrapy",
+            engine_used="scrapy",
+            word_count=3,
+        ),
+    )
+    storage.write_entities(job.job_id, {
+        "services": [
+            ExtractedEntity(
+                entity_type="service",
+                normalized_key="data-platform-services",
+                display_name="Data Platform Services",
+                source_urls=["https://example.com/services/data-platform"],
+                confidence="high",
+            )
+        ]
+    })
+
+    state = {"job_id": job.job_id, "selected_job_id": job.job_id}
+    sync_active_crawl_state(state, storage=storage)
+
+    assert state["crawl_running"] is False
+    assert state["job_data"]["status"] == "completed"
+    assert len(state["job_records"]) == 1
+    assert len(state["job_entities"]["services"]) == 1

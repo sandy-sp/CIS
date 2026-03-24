@@ -3,7 +3,7 @@ import streamlit as st
 
 from activity_log import ActivityLogStore, ensure_activity_state
 from app_settings import ensure_session_settings
-from pages.scrape_page import scrape_page
+from pages.scrape_page import scrape_page, sync_active_crawl_state
 from pages.index_page import index_page
 from pages.chat_page import chat_page
 from pages.settings_page import settings_page
@@ -77,6 +77,7 @@ def main() -> None:
     )
     ensure_session_settings(st.session_state)
     ensure_activity_state(st.session_state)
+    sync_active_crawl_state(st.session_state)
     _inject_app_styles()
 
     pages = {
@@ -94,6 +95,7 @@ def main() -> None:
         _render_runtime_badges()
         _render_activity_log()
 
+    st.session_state.current_page = page
     pages[page]()
 
 

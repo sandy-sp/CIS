@@ -26,6 +26,8 @@ QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 _STORAGE = JobStorage()
 _REGISTRY = IndexRegistry()
 _BENCHMARKS_DIR = Path("benchmarks")
+_ACTIVE_JOB_STATUSES = {"queued", "discovering", "crawling", "cleaning", "external_enrichment", "extracting"}
+_TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
 
 
 def _job_option_label(job: dict) -> str:
@@ -33,9 +35,12 @@ def _job_option_label(job: dict) -> str:
     return f"{job.get('domain', '')} | {job.get('status', '')} | {created} | {job.get('job_id', '')}"
 
 
-def _ensure_state() -> None:
+def _ensure_state(state=None) -> None:
+    if state is None:
+        state = st.session_state
     defaults = {
         "crawl_running": False,
+        "current_page": "Scrape",
         "job_id": "",
         "job_data": None,
         "result_queue": None,
@@ -65,8 +70,47 @@ def _ensure_state() -> None:
         "benchmark_editor_job_id": "",
     }
     for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+        if key not in state:
+            state[key] = value
+
+
+def _reset_job_artifacts(state=None) -> None:
+    if state is None:
+        state = st.session_state
+    state["job_bundle"] = None
+    state["job_records"] = []
+    state["job_entities"] = {}
+    state["benchmark_draft_bytes"] = b""
+    state["benchmark_draft_file_name"] = ""
+    state["benchmark_draft_summary"] = {}
+    state["benchmark_draft_job_id"] = ""
+    state["benchmark_report_json_bytes"] = b""
+    state["benchmark_report_md_bytes"] = b""
+    state["benchmark_report_summary"] = {}
+    state["benchmark_report_rows"] = []
+    state["benchmark_report_job_id"] = ""
+    state["benchmark_report_name"] = ""
+    state["benchmark_report_details"] = {}
+    state["benchmark_editor_text"] = ""
+    state["benchmark_editor_file_name"] = ""
+    state["benchmark_editor_summary"] = {}
+    state["benchmark_editor_job_id"] = ""
+
+
+def _load_recent_record_snapshot(job_id: str, *, storage: JobStorage | None = None, limit: int = 20) -> list[dict]:
+    storage = storage or _STORAGE
+    ranked_records = []
+    for record in storage.load_page_records(job_id, source_type="internal"):
+        if record.status != "success":
+            continue
+        path = storage.clean_page_path(job_id, record.url)
+        try:
+            mtime = path.stat().st_mtime
+        except FileNotFoundError:
+            mtime = 0.0
+        ranked_records.append((mtime, record.to_dict()))
+    ranked_records.sort(key=lambda item: item[0], reverse=True)
+    return [record for _mtime, record in ranked_records[:limit]]
 
 
 def _run_job(job_id: str, result_queue: queue.Queue, cancel_flag: list) -> None:
@@ -118,24 +162,7 @@ def _start_job(start_url: str, max_pages: int, rate_limit: float,
         include_external=follow_external_sources,
     )
     st.session_state.recent_records = []
-    st.session_state.job_bundle = None
-    st.session_state.job_records = []
-    st.session_state.job_entities = {}
-    st.session_state.benchmark_draft_bytes = b""
-    st.session_state.benchmark_draft_file_name = ""
-    st.session_state.benchmark_draft_summary = {}
-    st.session_state.benchmark_draft_job_id = ""
-    st.session_state.benchmark_report_json_bytes = b""
-    st.session_state.benchmark_report_md_bytes = b""
-    st.session_state.benchmark_report_summary = {}
-    st.session_state.benchmark_report_rows = []
-    st.session_state.benchmark_report_job_id = ""
-    st.session_state.benchmark_report_name = ""
-    st.session_state.benchmark_report_details = {}
-    st.session_state.benchmark_editor_text = ""
-    st.session_state.benchmark_editor_file_name = ""
-    st.session_state.benchmark_editor_summary = {}
-    st.session_state.benchmark_editor_job_id = ""
+    _reset_job_artifacts()
     st.session_state.cancel_flag = []
     st.session_state.result_queue = queue.Queue()
 
@@ -146,43 +173,102 @@ def _start_job(start_url: str, max_pages: int, rate_limit: float,
     ).start()
 
 
-def _load_job_outputs(job_id: str) -> None:
-    job = _STORAGE.load_job(job_id)
-    records = _STORAGE.load_page_records(job_id)
-    entities_path = _STORAGE.job_dir(job_id) / "exports" / "entities.json"
+def _load_job_outputs(job_id: str, *, state=None, storage: JobStorage | None = None) -> None:
+    if state is None:
+        state = st.session_state
+    storage = storage or _STORAGE
+    job = storage.load_job(job_id)
+    records = storage.load_page_records(job_id)
+    entities_path = storage.job_dir(job_id) / "exports" / "entities.json"
     entities = {}
     if entities_path.exists():
         entities = json.loads(entities_path.read_text(encoding="utf-8"))
-    st.session_state.job_id = job_id
-    st.session_state.job_data = job.to_dict()
-    st.session_state.selected_job_id = job_id
-    st.session_state.collection_name = collection_name_for_job(
+    state["job_id"] = job_id
+    state["job_data"] = job.to_dict()
+    state["selected_job_id"] = job_id
+    state["collection_name"] = collection_name_for_job(
         job.job_id,
         job.domain,
         include_external=job.settings.follow_external_sources,
     )
-    st.session_state.job_records = [record.to_dict() for record in records]
-    st.session_state.job_entities = entities
-    st.session_state.job_bundle = _STORAGE.bundle_job(job_id)
-    st.session_state.benchmark_draft_bytes = b""
-    st.session_state.benchmark_draft_file_name = ""
-    st.session_state.benchmark_draft_summary = {}
-    st.session_state.benchmark_draft_job_id = ""
-    st.session_state.benchmark_report_json_bytes = b""
-    st.session_state.benchmark_report_md_bytes = b""
-    st.session_state.benchmark_report_summary = {}
-    st.session_state.benchmark_report_rows = []
-    st.session_state.benchmark_report_job_id = ""
-    st.session_state.benchmark_report_name = ""
-    st.session_state.benchmark_report_details = {}
-    st.session_state.benchmark_editor_text = ""
-    st.session_state.benchmark_editor_file_name = ""
-    st.session_state.benchmark_editor_summary = {}
-    st.session_state.benchmark_editor_job_id = ""
+    _reset_job_artifacts(state)
+    state["recent_records"] = _load_recent_record_snapshot(job_id, storage=storage)
+    state["job_records"] = [record.to_dict() for record in records]
+    state["job_entities"] = entities
+    state["job_bundle"] = storage.bundle_job(job_id)
+
+
+def _tracked_or_latest_active_job(state=None, *, storage: JobStorage | None = None):
+    if state is None:
+        state = st.session_state
+    storage = storage or _STORAGE
+    tracked_job_id = str(state.get("job_id") or state.get("selected_job_id") or "").strip()
+    if tracked_job_id:
+        try:
+            return storage.load_job(tracked_job_id)
+        except Exception:
+            pass
+    for job in storage.list_jobs():
+        if job.status in _ACTIVE_JOB_STATUSES:
+            return job
+    return None
+
+
+def sync_active_crawl_state(state=None, storage: JobStorage | None = None) -> None:
+    if state is None:
+        state = st.session_state
+    storage = storage or _STORAGE
+    _ensure_state(state)
+
+    job = _tracked_or_latest_active_job(state, storage=storage)
+    if job is None:
+        state["crawl_running"] = False
+        return
+
+    previous_job_id = str(state.get("job_id") or "")
+    state["job_id"] = job.job_id
+    state["job_data"] = job.to_dict()
+    state["selected_job_id"] = job.job_id
+    state["collection_name"] = collection_name_for_job(
+        job.job_id,
+        job.domain,
+        include_external=job.settings.follow_external_sources,
+    )
+
+    if job.status in _ACTIVE_JOB_STATUSES:
+        state["crawl_running"] = True
+        if previous_job_id != job.job_id:
+            _reset_job_artifacts(state)
+            state["recent_records"] = []
+        if not state.get("recent_records"):
+            state["recent_records"] = _load_recent_record_snapshot(job.job_id, storage=storage)
+        return
+
+    if job.status not in _TERMINAL_JOB_STATUSES:
+        state["crawl_running"] = False
+        return
+
+    state["crawl_running"] = False
+    state["result_queue"] = None
+    state["cancel_flag"] = []
+    if previous_job_id != job.job_id or not state.get("job_records"):
+        _load_job_outputs(job.job_id, state=state, storage=storage)
+
+
+def _should_auto_refresh_scrape_page(state=None) -> bool:
+    if state is None:
+        state = st.session_state
+    return bool(
+        state.get("crawl_running")
+        and state.get("result_queue")
+        and state.get("current_page") == "Scrape"
+    )
 
 
 def _poll_queue() -> None:
     rq = st.session_state.result_queue
+    if rq is None:
+        return
     batch = 0
     while batch < 20:
         try:
@@ -1004,6 +1090,7 @@ def _render_outputs() -> None:
 
 def scrape_page() -> None:
     _ensure_state()
+    sync_active_crawl_state(st.session_state)
 
     st.title("Company Intelligence Collector")
     st.caption("Crawl a company website into a mirrored corpus, classify pages, gather public external sources, and generate structured exports.")
@@ -1073,21 +1160,30 @@ def scrape_page() -> None:
     _render_recent_records()
     _render_outputs()
 
-    if st.session_state.crawl_running and st.session_state.result_queue:
+    if st.session_state.crawl_running:
         col_a, col_b = st.columns(2)
-        if col_a.button("Cancel Crawl"):
-            st.session_state.cancel_flag.append(True)
-            log_activity(
-                st.session_state,
-                "crawl",
-                f"Cancellation requested for crawl job `{st.session_state.job_id}`",
-                level="warning",
-            )
-        if col_b.button("Refresh Now"):
-            _poll_queue()
-            st.rerun()
+        if st.session_state.result_queue:
+            if col_a.button("Cancel Crawl"):
+                st.session_state.cancel_flag.append(True)
+                log_activity(
+                    st.session_state,
+                    "crawl",
+                    f"Cancellation requested for crawl job `{st.session_state.job_id}`",
+                    level="warning",
+                )
+            if col_b.button("Refresh Now"):
+                _poll_queue()
+                sync_active_crawl_state(st.session_state)
+                st.rerun()
 
-        _poll_queue()
-        if st.session_state.crawl_running:
-            time.sleep(0.3)
-            st.rerun()
+            _poll_queue()
+            sync_active_crawl_state(st.session_state)
+            if _should_auto_refresh_scrape_page(st.session_state):
+                time.sleep(0.3)
+                st.rerun()
+        else:
+            col_a.caption("Live queue updates are not attached in this session.")
+            if col_b.button("Refresh Persisted Status", key="refresh_persisted_crawl_status"):
+                sync_active_crawl_state(st.session_state)
+                st.rerun()
+            st.info("This crawl is still active, but the app is reading progress from the saved job files instead of the live in-memory queue.")
