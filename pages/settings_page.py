@@ -16,7 +16,17 @@ from ollama_status import get_ollama_status, pull_ollama_models
 
 
 _LLM_BACKENDS = ["ollama", "openai", "anthropic"]
-_EMBEDDING_BACKENDS = ["local", "ollama", "openai"]
+_LLM_BACKEND_LABELS = {
+    "ollama": "Bundled Ollama",
+    "openai": "OpenAI API",
+    "anthropic": "Anthropic API",
+}
+_EMBEDDING_BACKENDS = ["ollama", "openai", "local"]
+_EMBEDDING_BACKEND_LABELS = {
+    "ollama": "Bundled Ollama",
+    "openai": "OpenAI API",
+    "local": "Advanced local model",
+}
 _SETTINGS_STORE = SettingsStore()
 
 
@@ -153,13 +163,13 @@ def _render_ollama_status_panel(
 
 def settings_page() -> None:
     st.title("Settings")
-    st.caption("Configure API keys and model settings for scraping, indexing, and chat.")
+    st.caption("Choose the models used for indexing and chat. The default Docker path uses bundled Ollama for both.")
     st.caption("Saved locally in `data/app_settings.json` on this machine.")
 
     # --- Load current settings ---
     s = ensure_session_settings(st.session_state, store=_SETTINGS_STORE)
     saved_llm_backend = s.get("llm_backend", "ollama")
-    saved_embedding_backend = s.get("embedding_backend", "local")
+    saved_embedding_backend = s.get("embedding_backend", "ollama")
     default_llm_models = llm_model_defaults()
     default_embedding_models = embedding_model_defaults()
 
@@ -168,6 +178,7 @@ def settings_page() -> None:
         "LLM Backend",
         _LLM_BACKENDS,
         index=_LLM_BACKENDS.index(s.get("llm_backend", "ollama")),
+        format_func=lambda key: _LLM_BACKEND_LABELS[key],
     )
 
     api_key = ""
@@ -207,7 +218,8 @@ def settings_page() -> None:
     embedding_backend = st.selectbox(
         "Embedding Backend",
         _EMBEDDING_BACKENDS,
-        index=_EMBEDDING_BACKENDS.index(s.get("embedding_backend", "local")),
+        index=_EMBEDDING_BACKENDS.index(s.get("embedding_backend", "ollama")),
+        format_func=lambda key: _EMBEDDING_BACKEND_LABELS[key],
     )
 
     embedding_api_key = ""

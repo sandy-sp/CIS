@@ -31,7 +31,7 @@ def test_settings_store_load_invalid_payload_returns_empty(tmp_path):
 
     loaded = store.load()
     assert loaded["llm_backend"] == "ollama"
-    assert loaded["embedding_backend"] == "local"
+    assert loaded["embedding_backend"] == "ollama"
 
 
 def test_ensure_session_settings_loads_from_store(tmp_path):

@@ -30,6 +30,8 @@ class Retriever:
         self.top_k_candidates = top_k_candidates
         self.top_k_final = top_k_final
         self.use_reranker = use_reranker
+        self.last_error = ""
+        self.last_stage = ""
         self._store = VectorStore(
             collection_name=collection_name,
             dimensions=embedder.dimensions,
@@ -40,17 +42,26 @@ class Retriever:
 
     def retrieve(self, query: str) -> list[RetrievedChunk]:
         """Embed query, search Qdrant, optionally rerank. Returns top_k_final chunks."""
+        self.last_error = ""
+        self.last_stage = ""
         try:
             query_vectors = self.embedder.embed([query])
-        except Exception:
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.last_stage = "embedding"
             return []
         if not query_vectors:
             return []
 
-        candidates_raw = self._store.search(
-            query_vector=query_vectors[0],
-            top_k=self.top_k_candidates,
-        )
+        try:
+            candidates_raw = self._store.search(
+                query_vector=query_vectors[0],
+                top_k=self.top_k_candidates,
+            )
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.last_stage = "vector_store"
+            return []
         if not candidates_raw:
             return []
 

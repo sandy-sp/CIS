@@ -986,19 +986,22 @@ def _render_outputs() -> None:
         st.subheader("Extracted Entities")
         summary = {key: len(value) for key, value in entities.items()}
         st.write(summary)
-        _render_benchmark_draft()
-        _render_benchmark_editor()
-        _render_benchmark_evaluation()
+        with st.expander("Quality & Benchmark Tools", expanded=False):
+            _render_benchmark_draft()
+            _render_benchmark_editor()
+            _render_benchmark_evaluation()
 
 
 def scrape_page() -> None:
     _ensure_state()
 
     st.title("Company Intelligence Collector")
-    st.caption("Crawl a company website into a mirrored corpus, classify pages, collect public external sources, and generate structured exports.")
+    st.caption("Crawl a company website into a mirrored corpus, classify pages, gather public external sources, and generate structured exports.")
+    st.info("Start with a company homepage URL. When the crawl completes, you can review the extracted data, download exports, build a search index, and chat against the results.")
 
     jobs = [job.to_dict() for job in _STORAGE.list_jobs()]
     if jobs and not st.session_state.crawl_running:
+        st.subheader("Open Saved Job")
         default_job_id = st.session_state.get("selected_job_id", "")
         job_ids = [job["job_id"] for job in jobs]
         selected_index = job_ids.index(default_job_id) if default_job_id in job_ids else 0
@@ -1013,6 +1016,7 @@ def scrape_page() -> None:
             _load_job_outputs(selected_job_id)
             st.rerun()
 
+    st.subheader("Start New Crawl")
     with st.form("crawl_form"):
         col1, col2, col3 = st.columns([3, 1, 1])
         with col1:

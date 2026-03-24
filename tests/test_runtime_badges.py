@@ -12,7 +12,7 @@ def test_build_runtime_badges_for_bundled_ollama():
 
     badges = build_runtime_badges(settings)
 
-    assert badges[0]["value"] == "Crawl4AI + Scrapy"
+    assert badges[0]["value"] == "Hybrid crawler"
     assert badges[1]["value"] == "Bundled Ollama | nomic-embed-text"
     assert badges[2]["value"] == "Bundled Ollama | llama3.2:3b"
 

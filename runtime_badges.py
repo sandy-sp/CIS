@@ -39,7 +39,7 @@ def _llm_badge_value(settings: dict[str, Any]) -> str:
 
 
 def _embedding_badge_value(settings: dict[str, Any]) -> str:
-    backend = settings.get("embedding_backend", "local")
+    backend = settings.get("embedding_backend", "ollama")
     model = settings.get("embedding_model", "") or embedding_model_defaults()[backend]
     if backend == "local":
         return f"Local model | {model}"
@@ -54,7 +54,7 @@ def _embedding_badge_value(settings: dict[str, Any]) -> str:
 
 def build_runtime_badges(settings: dict[str, Any]) -> list[dict[str, str]]:
     return [
-        {"label": "Scrape", "value": "Crawl4AI + Scrapy"},
+        {"label": "Scrape", "value": "Hybrid crawler"},
         {"label": "Index", "value": _embedding_badge_value(settings)},
         {"label": "Chat", "value": _llm_badge_value(settings)},
     ]

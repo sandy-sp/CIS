@@ -45,9 +45,9 @@ def default_settings() -> dict[str, str]:
     if llm_backend not in _LLM_BACKENDS:
         llm_backend = "ollama"
 
-    embedding_backend = os.environ.get("APP_DEFAULT_EMBEDDING_BACKEND", "local")
+    embedding_backend = os.environ.get("APP_DEFAULT_EMBEDDING_BACKEND", "ollama")
     if embedding_backend not in _EMBEDDING_BACKENDS:
-        embedding_backend = "local"
+        embedding_backend = "ollama"
 
     llm_defaults = llm_model_defaults()
     embedding_defaults = embedding_model_defaults()

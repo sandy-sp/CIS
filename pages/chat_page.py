@@ -42,6 +42,31 @@ def _is_generation_error(answer: str) -> bool:
     return answer.startswith("[Ollama error:") or answer.startswith("[OpenAI error:") or answer.startswith("[Anthropic error:")
 
 
+def _retrieval_settings(active_target: dict, settings: dict) -> dict:
+    backend = active_target.get("embedding_backend") or settings.get("embedding_backend", "ollama")
+    return {
+        "backend": backend,
+        "api_key": settings.get("embedding_api_key", "") if backend == "openai" else "",
+        "model": active_target.get("embedding_model") or settings.get("embedding_model", ""),
+        "ollama_url": active_target.get("embedding_ollama_url") or settings.get("ollama_url", default_ollama_url()),
+    }
+
+
+def _backend_display_label(backend: str, model: str, ollama_url: str = "") -> str:
+    if backend == "ollama":
+        host = "Bundled Ollama" if ollama_url.rstrip("/") in {
+            default_ollama_url().rstrip("/"),
+            "http://localhost:11434",
+            "http://ollama:11434",
+        } else "Custom Ollama"
+        return f"{host} | {model}"
+    if backend == "openai":
+        return f"OpenAI API | {model}"
+    if backend == "anthropic":
+        return f"Anthropic API | {model}"
+    return f"Local model | {model}"
+
+
 def _ensure_chat_state() -> None:
     defaults = {
         "chat_history": [],
@@ -87,9 +112,6 @@ def chat_page() -> None:
     backend = settings.get("llm_backend", "ollama")
     api_key = settings.get("api_key", "")
     llm_model = settings.get("llm_model", "")
-    embedding_backend = settings.get("embedding_backend", "local")
-    embedding_api_key = settings.get("embedding_api_key", "")
-    embedding_model = settings.get("embedding_model", "")
     ollama_url = settings.get("ollama_url", default_ollama_url())
     indexed_targets = st.session_state.get("indexed_targets", [])
 
@@ -119,17 +141,28 @@ def chat_page() -> None:
     st.session_state.chat_target_id = active_target_id
     active_target = targets_by_id[active_target_id]
     collection_name = active_target["collection_name"]
+    retrieval = _retrieval_settings(active_target, settings)
     st.caption(f"Collection: `{collection_name}`")
     indexed_at = active_target.get("indexed_at", "")
     if indexed_at:
         st.caption(f"Indexed: `{indexed_at[:19].replace('T', ' ')}`")
+    st.info(
+        "Retrieval uses the embedding model that built this index. "
+        "Answer generation uses your current chat model from Settings."
+    )
+    st.caption(
+        f"Retrieval: `{_backend_display_label(retrieval['backend'], retrieval['model'], retrieval['ollama_url'])}`"
+    )
+    st.caption(
+        f"Answer model: `{_backend_display_label(backend, llm_model, ollama_url)}`"
+    )
 
     # Validate settings
     if backend in ("openai", "anthropic") and not api_key:
         st.warning(f"Configure your {backend.capitalize()} API key in the Settings page.")
         return
-    if embedding_backend == "openai" and not embedding_api_key:
-        st.warning("Configure your OpenAI embedding API key in the Settings page.")
+    if retrieval["backend"] == "openai" and not retrieval["api_key"]:
+        st.warning("This indexed corpus requires the OpenAI embedding API key used for retrieval. Configure it in Settings.")
         return
 
     # --- Display chat history ---
@@ -163,15 +196,12 @@ def chat_page() -> None:
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
-                    # Build embedder
-                    emb_kwargs = {"backend": embedding_backend}
-                    if embedding_backend == "openai":
-                        emb_kwargs["api_key"] = embedding_api_key
-                    if embedding_backend == "ollama":
-                        emb_kwargs["ollama_url"] = ollama_url
-                    if embedding_model:
-                        emb_kwargs["model"] = embedding_model
-                    embedder = Embedder(**emb_kwargs)
+                    embedder = Embedder(
+                        backend=retrieval["backend"],
+                        api_key=retrieval["api_key"] or None,
+                        model=retrieval["model"] or None,
+                        ollama_url=retrieval["ollama_url"],
+                    )
 
                     # Retrieve relevant chunks
                     retriever = Retriever(
@@ -182,6 +212,21 @@ def chat_page() -> None:
                         use_reranker=False,  # skip reranker for speed; reranker model may not be downloaded
                     )
                     chunks = retriever.retrieve(question)
+                    if retriever.last_error:
+                        error_msg = (
+                            f"Retrieval failed during {retriever.last_stage.replace('_', ' ')}: "
+                            f"{retriever.last_error}"
+                        )
+                        st.error(error_msg)
+                        st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
+                        log_activity(
+                            st.session_state,
+                            "chat",
+                            f"Retrieval failed for `{collection_name}`",
+                            level="error",
+                            details=error_msg,
+                        )
+                        return
                     if chunks:
                         log_activity(
                             st.session_state,
@@ -211,7 +256,10 @@ def chat_page() -> None:
                         history=st.session_state.chat_history[-10:],
                     )
 
-                    st.markdown(answer)
+                    if _is_generation_error(answer):
+                        st.error(answer)
+                    else:
+                        st.markdown(answer)
                     st.session_state.chat_history.append({"role": "assistant", "content": answer})
                     if _is_generation_error(answer):
                         log_activity(

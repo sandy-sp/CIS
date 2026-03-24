@@ -65,8 +65,18 @@ def test_retrieve_chunk_has_required_fields(retriever):
 def test_retrieve_embedder_error_returns_empty(retriever, mock_embedder):
     mock_embedder.embed.side_effect = Exception("API error")
     assert retriever.retrieve("cloud services") == []
+    assert retriever.last_stage == "embedding"
+    assert "API error" in retriever.last_error
 
 def test_retrieve_calls_embedder_with_query(retriever, mock_embedder):
     _seed_store(retriever)
     retriever.retrieve("what are cloud services?")
     mock_embedder.embed.assert_called_once_with(["what are cloud services?"])
+
+
+def test_retrieve_search_error_records_last_error(retriever):
+    retriever._store.search = MagicMock(side_effect=Exception("Qdrant unavailable"))
+
+    assert retriever.retrieve("cloud services") == []
+    assert retriever.last_stage == "vector_store"
+    assert "Qdrant unavailable" in retriever.last_error

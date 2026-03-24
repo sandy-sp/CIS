@@ -16,10 +16,16 @@ from indexer.registry import IndexRegistry
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 _STORAGE = JobStorage()
 _REGISTRY = IndexRegistry()
+_EMBEDDING_BACKEND_OPTIONS = ["ollama", "openai", "local"]
+_EMBEDDING_BACKEND_LABELS = {
+    "ollama": "Bundled Ollama",
+    "openai": "OpenAI API",
+    "local": "Advanced local model",
+}
 _DEFAULT_EMBEDDING_MODELS = {
-    "Local (BGE-M3)": embedding_model_defaults()["local"],
-    "Local (Ollama)": embedding_model_defaults()["ollama"],
-    "OpenAI API": embedding_model_defaults()["openai"],
+    "ollama": embedding_model_defaults()["ollama"],
+    "openai": embedding_model_defaults()["openai"],
+    "local": embedding_model_defaults()["local"],
 }
 
 
@@ -79,7 +85,8 @@ def index_page() -> None:
     _ensure_index_state()
 
     st.title("Index")
-    st.caption("Embed a completed company-intel corpus into Qdrant for search and chat.")
+    st.caption("Turn a completed crawl into a searchable knowledge base for retrieval and chat.")
+    st.info("Recommended path: use the bundled Ollama embedding model in Docker. OpenAI and local sentence-transformer models remain optional.")
     settings = ensure_session_settings(st.session_state)
 
     completed_jobs = _STORAGE.list_jobs(status="completed")
@@ -87,16 +94,16 @@ def index_page() -> None:
     indexed_targets = st.session_state.get("indexed_targets", [])
 
     if indexed_targets:
-        st.subheader("Indexed Corpora")
-        preview = []
-        for item in indexed_targets[:10]:
-            preview.append({
-                "Label": item.get("label", ""),
-                "Collection": item.get("collection_name", ""),
-                "Kind": item.get("source_kind", ""),
-                "Indexed at": item.get("indexed_at", "")[:19].replace("T", " "),
-            })
-        st.dataframe(preview, use_container_width=True)
+        with st.expander("Existing Indexes", expanded=False):
+            preview = []
+            for item in indexed_targets[:10]:
+                preview.append({
+                    "Label": item.get("label", ""),
+                    "Collection": item.get("collection_name", ""),
+                    "Kind": item.get("source_kind", ""),
+                    "Indexed at": item.get("indexed_at", "")[:19].replace("T", " "),
+                })
+            st.dataframe(preview, use_container_width=True, hide_index=True)
 
     if not completed_jobs:
         st.warning("No completed company-intel jobs are available yet.")
@@ -153,51 +160,60 @@ def index_page() -> None:
 
     # --- Settings ---
     st.subheader("Embedding Settings")
-    backend_options = ["Local (BGE-M3)", "Local (Ollama)", "OpenAI API"]
     backend_defaults = {
-        "local": "Local (BGE-M3)",
-        "ollama": "Local (Ollama)",
-        "openai": "OpenAI API",
+        "local": "local",
+        "ollama": "ollama",
+        "openai": "openai",
     }
     backend = st.radio(
-        "Backend",
-        backend_options,
+        "Embedding backend",
+        _EMBEDDING_BACKEND_OPTIONS,
         horizontal=True,
-        index=backend_options.index(backend_defaults.get(settings.get("embedding_backend", "local"), "Local (BGE-M3)")),
+        format_func=lambda key: _EMBEDDING_BACKEND_LABELS[key],
+        index=_EMBEDDING_BACKEND_OPTIONS.index(backend_defaults.get(settings.get("embedding_backend", "ollama"), "ollama")),
     )
 
     api_key = None
     ollama_url = settings.get("ollama_url", default_ollama_url())
     default_model_name = _DEFAULT_EMBEDDING_MODELS[backend]
-    saved_backend_label = backend_defaults.get(settings.get("embedding_backend", "local"), "Local (BGE-M3)")
+    saved_backend_label = backend_defaults.get(settings.get("embedding_backend", "ollama"), "ollama")
     saved_model = settings.get("embedding_model", "")
     model_name = saved_model if saved_model and saved_backend_label == backend else default_model_name
-    if backend == "OpenAI API":
+    if backend == "openai":
         api_key = st.text_input("OpenAI API Key", type="password",
                                 placeholder="sk-...", value=settings.get("embedding_api_key", ""))
         model_name = st.text_input("Embedding Model", value=model_name)
         if not api_key:
             st.warning("Enter your OpenAI API key to proceed.")
             return
-    elif backend == "Local (Ollama)":
+    elif backend == "ollama":
         ollama_url = st.text_input("Ollama Endpoint", value=ollama_url)
         model_name = st.text_input("Embedding Model", value=model_name)
+        st.caption("Uses the bundled Docker Ollama server by default.")
     else:
         model_name = st.text_input("Embedding Model", value=model_name)
+        st.caption("Advanced option. This downloads and runs a sentence-transformers embedding model inside the app container.")
 
-    if st.button("Run Indexing Pipeline", type="primary"):
-        if backend == "OpenAI API":
-            embedder_backend = "openai"
-        elif backend == "Local (Ollama)":
-            embedder_backend = "ollama"
-        else:
-            embedder_backend = "local"
+    if st.button("Build Search Index", type="primary"):
+        embedder_backend = backend
         embedder = Embedder(
             backend=embedder_backend,
             api_key=api_key,
             model=model_name or None,
             ollama_url=ollama_url,
         )
+        try:
+            embedder.health_check()
+        except Exception as exc:
+            st.error(f"Embedding backend is not ready: {exc}")
+            log_activity(
+                st.session_state,
+                "index",
+                f"Indexing preflight failed for `{target['collection_name']}`",
+                level="error",
+                details=str(exc),
+            )
+            return
         pipeline = IndexerPipeline(
             collection_name=target["collection_name"],
             embedder=embedder,
