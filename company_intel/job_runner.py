@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from queue import Queue
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import redis
 
+from app_settings import SettingsStore, default_ollama_url
 from company_intel.classifier import PageClassifier
 from company_intel.cleaner import CorpusCleaner
 from company_intel.exporter import IntelExporter
@@ -14,11 +16,17 @@ from company_intel.external import ExternalCollector
 from company_intel.extractor import UniversalExtractor
 from company_intel.models import CrawlJob, CrawlSettings, PageRecord
 from company_intel.review import filter_records_for_outputs
-from company_intel.storage import JobStorage
+from company_intel.storage import JobStorage, collection_name_for_job
+from indexer.embedder import Embedder
+from indexer.pipeline import IndexerPipeline, _is_indexable_record
+from indexer.registry import IndexRegistry
 from scraper.hybrid_scraper import HybridScraper
 from scraper.page_probe import EngineRouter
 from scraper.queue_manager import QueueManager
 from scraper.snooper import Snooper
+
+
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 
 
 def _strip_frontmatter(markdown: str) -> str:
@@ -30,9 +38,14 @@ def _strip_frontmatter(markdown: str) -> str:
 
 
 class JobRunner:
-    def __init__(self, redis_url: str = "redis://localhost:6379", storage: JobStorage | None = None):
+    def __init__(self, redis_url: str = "redis://localhost:6379",
+                 storage: JobStorage | None = None,
+                 qdrant_url: str = QDRANT_URL,
+                 index_registry: IndexRegistry | None = None):
         self.redis_url = redis_url
         self.storage = storage or JobStorage()
+        self.qdrant_url = qdrant_url
+        self.index_registry = index_registry or IndexRegistry()
         self.classifier = PageClassifier()
         self.cleaner = CorpusCleaner()
         self.extractor = UniversalExtractor()
@@ -61,6 +74,8 @@ class JobRunner:
         redis_client = self._get_redis_client()
         qm = QueueManager(job.domain, redis_client=redis_client)
         qm.flush()
+        live_index_pipeline: IndexerPipeline | None = None
+        live_index_target: dict | None = None
 
         try:
             job.status = "discovering"
@@ -93,6 +108,12 @@ class JobRunner:
             for url in seed_urls:
                 qm.enqueue(url)
 
+            if job.settings.enable_rag_index:
+                live_index_pipeline, live_index_target, warning = self._prepare_live_index(job)
+                if warning:
+                    job.warnings = sorted(set(job.warnings + [warning]))
+                    self.storage.save_job(job)
+
             job.status = "crawling"
             self.storage.save_job(job)
             self._emit_job_update(result_queue, job)
@@ -112,6 +133,11 @@ class JobRunner:
                 record = self._build_record(job, qm, result)
                 self.storage.save_page_record(job.job_id, record)
                 self._update_job_counts(job, record)
+                if live_index_pipeline is not None:
+                    index_warning = self._index_live_records(live_index_pipeline, job, [record])
+                    if index_warning:
+                        live_index_pipeline = None
+                        job.warnings = sorted(set(job.warnings + [index_warning]))
                 self.storage.save_job(job)
                 if result_queue:
                     result_queue.put({
@@ -160,6 +186,11 @@ class JobRunner:
             self.storage.save_job(job)
             self._emit_job_update(result_queue, job)
             self._write_outputs(job, all_records)
+
+            if live_index_pipeline is not None and live_index_target is not None:
+                final_index_warning = self._finalize_live_index(job, live_index_pipeline, live_index_target)
+                if final_index_warning:
+                    job.warnings = sorted(set(job.warnings + [final_index_warning]))
 
             job.status = "completed"
             job.finished_at = datetime.now(tz=timezone.utc).isoformat()
@@ -239,6 +270,80 @@ class JobRunner:
                 entities,
                 self.storage.job_dir(job.job_id) / "exports" / "intel.xlsx",
             )
+
+    def _prepare_live_index(self, job: CrawlJob) -> tuple[IndexerPipeline | None, dict | None, str]:
+        settings = SettingsStore().load()
+        backend = settings.get("embedding_backend", "ollama")
+        api_key = settings.get("embedding_api_key", "") if backend == "openai" else ""
+        if backend == "openai" and not api_key:
+            return None, None, "Live RAG indexing skipped: OpenAI embedding backend is selected but no API key is configured."
+
+        try:
+            embedder = Embedder(
+                backend=backend,
+                api_key=api_key or None,
+                model=settings.get("embedding_model", "") or None,
+                ollama_url=settings.get("ollama_url", default_ollama_url()),
+            )
+            embedder.health_check()
+        except Exception as exc:
+            return None, None, f"Live RAG indexing skipped: {exc}"
+
+        collection_name = collection_name_for_job(
+            job.job_id,
+            job.domain,
+            include_external=job.settings.follow_external_sources,
+        )
+        target = {
+            "target_id": f"job:{job.job_id}:{'full' if job.settings.follow_external_sources else 'internal'}",
+            "label": f"{job.domain} ({'internal + external' if job.settings.follow_external_sources else 'internal only'})",
+            "collection_name": collection_name,
+            "source_kind": "company_job",
+            "job_id": job.job_id,
+            "domain": job.domain,
+            "include_external": job.settings.follow_external_sources,
+            "embedding_backend": backend,
+            "embedding_model": getattr(embedder, "_model_name", ""),
+            "embedding_ollama_url": settings.get("ollama_url", default_ollama_url()) if backend == "ollama" else "",
+            "dimensions": embedder.dimensions,
+        }
+        self.index_registry.save_target(target)
+        pipeline = IndexerPipeline(
+            collection_name=collection_name,
+            embedder=embedder,
+            qdrant_url=self.qdrant_url,
+            storage=self.storage,
+        )
+        return pipeline, target, ""
+
+    def _index_live_records(self, pipeline: IndexerPipeline, job: CrawlJob, records: list[PageRecord]) -> str:
+        indexable = [
+            record for record in records
+            if _is_indexable_record(record, include_external=False) and record.source_type == "internal"
+        ]
+        if not indexable:
+            return ""
+        for progress in pipeline.run(page_records=indexable, job_id=job.job_id):
+            if progress.error:
+                return f"Live RAG indexing disabled during crawl: {progress.error}"
+        return ""
+
+    def _finalize_live_index(self, job: CrawlJob, pipeline: IndexerPipeline, target: dict) -> str:
+        for progress in pipeline.replace_job_collection(
+            job.job_id,
+            include_external=job.settings.follow_external_sources,
+        ):
+            if progress.error:
+                return f"Final RAG collection refresh failed: {progress.error}"
+        try:
+            stats = pipeline.get_stats()
+        except Exception:
+            stats = {}
+        refreshed_target = dict(target)
+        if stats:
+            refreshed_target["stats"] = stats
+        self.index_registry.save_target(refreshed_target)
+        return ""
 
     def _get_redis_client(self):
         try:

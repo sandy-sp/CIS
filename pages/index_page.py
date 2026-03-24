@@ -192,7 +192,7 @@ def index_page() -> None:
         st.caption("Uses the bundled Docker Ollama server by default.")
     else:
         model_name = st.text_input("Embedding Model", value=model_name)
-        st.caption("Advanced option. This downloads and runs a sentence-transformers embedding model inside the app container.")
+        st.caption("Advanced option. Requires `requirements-local.txt` and is not bundled in the default Docker image.")
 
     if st.button("Build Search Index", type="primary"):
         embedder_backend = backend

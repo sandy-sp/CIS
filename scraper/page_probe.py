@@ -83,7 +83,7 @@ class EngineRouter:
             )
 
         return ProbeResult(
-            primary_engine="scrapy",
+            primary_engine="scrapling",
             reason="static-friendly",
             status_code=resp.status_code,
             text_ratio=text_ratio,

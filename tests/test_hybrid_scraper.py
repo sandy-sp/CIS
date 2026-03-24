@@ -6,6 +6,7 @@ from models import PageResult
 from scraper.hybrid_scraper import HybridScraper
 from scraper.queue_manager import QueueManager
 from scraper.snooper import Snooper
+from scraper.page_probe import ProbeResult
 
 
 
@@ -73,6 +74,40 @@ async def test_falls_back_to_scrapy_on_crawl4ai_failure(qm, snooper, failed_resu
         results = [r async for r in scraper.crawl("https://example.com")]
 
     assert any(r.engine_used == "scrapy" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_prefers_scrapling_for_static_friendly_pages(qm, snooper):
+    scrapling_success = PageResult(
+        url="https://example.com/about",
+        status="success",
+        markdown="# About\n\nStatic content.",
+        raw_html="<html><body><a href='/services'>Services</a></body></html>",
+        engine_used="scrapling",
+    )
+
+    with patch("scraper.hybrid_scraper.Crawl4AIEngine") as MockPrimary, \
+         patch("scraper.hybrid_scraper.ScrapyEngine") as MockFallback, \
+         patch.object(HybridScraper, "_run_scrapling", new=AsyncMock(return_value=(scrapling_success, []))):
+        mock_primary = AsyncMock()
+        mock_primary.scrape = AsyncMock(return_value=(PageResult(url="x", status="failed", skip_reason="unused"), []))
+        MockPrimary.return_value = mock_primary
+
+        mock_fallback = MagicMock()
+        mock_fallback.scrape.return_value = PageResult(url="x", status="failed", skip_reason="unused")
+        MockFallback.return_value = mock_fallback
+
+        scraper = HybridScraper(
+            qm,
+            snooper,
+            max_pages=1,
+            engine_router=MagicMock(
+                probe=MagicMock(return_value=ProbeResult(primary_engine="scrapling", reason="static-friendly"))
+            ),
+        )
+        results = [r async for r in scraper.crawl("https://example.com")]
+
+    assert any(r.engine_used == "scrapling" for r in results)
 
 
 @pytest.mark.asyncio

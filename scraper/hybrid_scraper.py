@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 from models import PageResult
 from scraper.crawl4ai_engine import Crawl4AIEngine
 from scraper.page_probe import EngineRouter
+from scraper.scrapling_engine import ScraplingEngine
 from scraper.scrapy_engine import ScrapyEngine
 from scraper.queue_manager import QueueManager
 from scraper.snooper import Snooper
@@ -76,6 +77,7 @@ class HybridScraper:
         self._processor = PageProcessor()
         self._primary = Crawl4AIEngine()
         self._fallback = ScrapyEngine()
+        self._scrapling = ScraplingEngine()
         self._static = StaticEngine()
         self._engine_router = engine_router
         self._pages_done = 0
@@ -210,13 +212,15 @@ class HybridScraper:
         if self._engine_router is not None:
             probe_result = await asyncio.to_thread(self._engine_router.probe, url)
 
-        order = ["crawl4ai", "scrapy"]
-        if probe_result and probe_result.primary_engine == "scrapy":
-            order = ["scrapy", "crawl4ai"]
+        order = ["crawl4ai", "scrapy", "scrapling"]
+        if probe_result and probe_result.primary_engine == "scrapling":
+            order = ["scrapling", "scrapy", "crawl4ai"]
 
         for engine in order:
             if engine == "crawl4ai":
                 candidate, links = await self._primary.scrape(url)
+            elif engine == "scrapling":
+                candidate, links = await self._run_scrapling(url)
             else:
                 candidate, links = await self._run_scrapy(url)
 
@@ -263,10 +267,22 @@ class HybridScraper:
         with ThreadPoolExecutor(max_workers=1) as pool:
             return await loop.run_in_executor(pool, self._scrape_with_scrapy, url)
 
+    async def _run_scrapling(self, url: str) -> tuple[PageResult, list[str]]:
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return await loop.run_in_executor(pool, self._scrape_with_scrapling, url)
+
     def _scrape_with_scrapy(self, url: str) -> tuple[PageResult, list[str]]:
         result = self._fallback.scrape(url)
         if not isinstance(result, PageResult):
             return PageResult(url=url, status="skipped", skip_reason="robots disallowed"), []
+        links = self._extract_links(result.raw_html, url) if result.status == "success" else []
+        return result, links
+
+    def _scrape_with_scrapling(self, url: str) -> tuple[PageResult, list[str]]:
+        result = self._scrapling.scrape(url)
+        if not isinstance(result, PageResult):
+            return PageResult(url=url, status="failed", skip_reason="scrapling bad result"), []
         links = self._extract_links(result.raw_html, url) if result.status == "success" else []
         return result, links
 

@@ -1,6 +1,6 @@
 """
 Embedding abstraction supporting two backends:
-  - "local": BAAI/bge-m3 via sentence-transformers (offline, ~570MB download)
+  - "local": BAAI/bge-m3 via sentence-transformers (optional install)
   - "ollama": Local embedding models via Ollama
   - "openai": OpenAI text-embedding-3-small via API
 
@@ -105,7 +105,7 @@ class Embedder:
             except ImportError:
                 raise ImportError(
                     "sentence-transformers is required for local embedding. "
-                    "Install with: pip install sentence-transformers>=3.0.0"
+                    "Install with: pip install -r requirements-local.txt"
                 )
         return self._model
 

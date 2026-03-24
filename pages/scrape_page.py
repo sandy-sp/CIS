@@ -75,7 +75,8 @@ def _run_job(job_id: str, result_queue: queue.Queue, cancel_flag: list) -> None:
 
 
 def _start_job(start_url: str, max_pages: int, rate_limit: float,
-               follow_external_sources: bool, ignore_robots: bool) -> None:
+               follow_external_sources: bool, ignore_robots: bool,
+               enable_rag_index: bool) -> None:
     settings = CrawlSettings(
         start_url=start_url,
         max_pages=max_pages,
@@ -83,10 +84,13 @@ def _start_job(start_url: str, max_pages: int, rate_limit: float,
         follow_external_sources=follow_external_sources,
         ignore_robots_exclusions=ignore_robots,
         enable_structured_export=True,
-        enable_rag_index=False,
+        enable_rag_index=enable_rag_index,
     )
     runner = JobRunner(redis_url=REDIS_URL, storage=_STORAGE)
     job = runner.create_job(settings)
+    session_settings = ensure_session_settings(st.session_state)
+    embedding_backend = session_settings.get("embedding_backend", "ollama")
+    embedding_model = session_settings.get("embedding_model", "")
     log_activity(
         st.session_state,
         "crawl",
@@ -94,7 +98,13 @@ def _start_job(start_url: str, max_pages: int, rate_limit: float,
         details=(
             f"Max pages: {max_pages} | Rate limit: {rate_limit}s | "
             f"External sources: {'yes' if follow_external_sources else 'no'} | "
-            f"Ignore exclusions: {'yes' if ignore_robots else 'no'}"
+            f"Ignore exclusions: {'yes' if ignore_robots else 'no'} | "
+            f"Live RAG indexing: {'yes' if enable_rag_index else 'no'}"
+            + (
+                f" ({embedding_backend}:{embedding_model})"
+                if enable_rag_index and embedding_model
+                else ""
+            )
         ),
     )
 
@@ -1017,6 +1027,9 @@ def scrape_page() -> None:
             st.rerun()
 
     st.subheader("Start New Crawl")
+    session_settings = ensure_session_settings(st.session_state)
+    embedding_backend = session_settings.get("embedding_backend", "ollama")
+    embedding_model = session_settings.get("embedding_model", "")
     with st.form("crawl_form"):
         col1, col2, col3 = st.columns([3, 1, 1])
         with col1:
@@ -1026,11 +1039,19 @@ def scrape_page() -> None:
         with col3:
             rate_limit = st.number_input("Rate limit (s)", min_value=0.5, max_value=10.0, value=1.0, step=0.5)
 
-        opt1, opt2 = st.columns(2)
+        opt1, opt2, opt3 = st.columns(3)
         with opt1:
             follow_external_sources = st.checkbox("Collect external public sources", value=True)
         with opt2:
             ignore_robots = st.checkbox("Ignore robots/llm exclusions", value=True)
+        with opt3:
+            enable_rag_index = st.checkbox("Build RAG index during crawl", value=True)
+
+        if enable_rag_index:
+            st.caption(
+                f"Live indexing uses your saved embedding settings: "
+                f"`{embedding_backend}` / `{embedding_model}`."
+            )
 
         submitted = st.form_submit_button("Start Crawl Job", disabled=st.session_state.crawl_running)
 
@@ -1044,6 +1065,7 @@ def scrape_page() -> None:
                 rate_limit=float(rate_limit),
                 follow_external_sources=follow_external_sources,
                 ignore_robots=ignore_robots,
+                enable_rag_index=enable_rag_index,
             )
             st.rerun()
 

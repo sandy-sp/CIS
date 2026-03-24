@@ -236,6 +236,8 @@ def settings_page() -> None:
         value=(s.get("embedding_model") if saved_embedding_backend == embedding_backend else "") or default_embedding_models[embedding_backend],
         help="Examples: BAAI/bge-m3, nomic-embed-text, text-embedding-3-small",
     )
+    if embedding_backend == "local":
+        st.caption("Advanced option. Local sentence-transformers models are optional and not included in the default Docker image.")
 
     if st.button("Test Embedding Connection"):
         try:

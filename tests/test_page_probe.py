@@ -13,12 +13,12 @@ def test_probe_prefers_crawl4ai_for_js_markers():
     assert result.reason == "js-markers"
 
 
-def test_probe_prefers_scrapy_for_static_page():
+def test_probe_prefers_scrapling_for_static_page():
     router = EngineRouter()
     html = "<html><body><h1>Services</h1><p>We provide consulting services for life sciences organizations.</p></body></html>"
     response = MagicMock(status_code=200, text=html)
     with patch("scraper.page_probe.requests.get", return_value=response):
         result = router.probe("https://example.com/services")
 
-    assert result.primary_engine == "scrapy"
+    assert result.primary_engine == "scrapling"
     assert result.reason == "static-friendly"
