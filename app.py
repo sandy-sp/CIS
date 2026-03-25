@@ -36,6 +36,8 @@ def main() -> None:
     )
     _inject_app_styles()
     sync_active_crawl_state(st.session_state)
+    if "current_page" not in st.session_state:
+        st.session_state.current_page = "Scrape"
 
     pages = {
         "Scrape": scrape_page,
@@ -44,9 +46,13 @@ def main() -> None:
 
     with st.sidebar:
         st.caption("Workspace")
-        page = st.radio("Workspace", list(pages.keys()), label_visibility="collapsed")
+        page = st.radio(
+            "Workspace",
+            list(pages.keys()),
+            key="current_page",
+            label_visibility="collapsed",
+        )
 
-    st.session_state.current_page = page
     pages[page]()
 
 

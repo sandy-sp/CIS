@@ -144,3 +144,42 @@ def test_finalize_live_index_updates_registry_stats(tmp_path):
     saved = registry.get_target(target["target_id"])
     assert saved is not None
     assert saved["stats"]["total_vectors"] == 12
+
+
+def test_resume_job_resets_terminal_state_and_preserves_progress(tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    runner = JobRunner(storage=storage, index_registry=IndexRegistry(path=tmp_path / "index_registry.json"))
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    record = _make_record("https://example.com/about")
+    storage.save_page_record(job.job_id, record)
+
+    job.status = "failed"
+    job.finished_at = "2026-03-25T01:00:00+00:00"
+    job.errors = ["Worker process stopped unexpectedly."]
+    storage.save_job(job)
+
+    resumed = runner.resume_job(job.job_id)
+
+    assert resumed.status == "queued"
+    assert resumed.finished_at == ""
+    assert resumed.errors == []
+    assert any("resumed crawl" in warning.lower() for warning in resumed.warnings)
+
+
+def test_build_crawl_seed_urls_uses_saved_internal_links_for_resume(tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    runner = JobRunner(storage=storage, index_registry=IndexRegistry(path=tmp_path / "index_registry.json"))
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    record = _make_record("https://example.com/about")
+    record.raw_html = """
+    <html><body>
+      <a href="/services">Services</a>
+      <a href="https://external.example/profile">External</a>
+    </body></html>
+    """
+
+    urls = runner._build_crawl_seed_urls(job, ["https://example.com/"], [record])
+
+    assert "https://example.com/" in urls
+    assert "https://example.com/services" in urls
+    assert all("external.example" not in url for url in urls)

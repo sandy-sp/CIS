@@ -122,16 +122,9 @@ class JobStorage:
     def clean_page_path(self, job_id: str, url: str) -> Path:
         return self.job_dir(job_id) / "pages" / "clean" / _mirror_path(url).with_suffix(".json")
 
-    def markdown_page_path(self, job_id: str, url: str) -> Path:
-        return self.job_dir(job_id) / "pages" / "markdown" / _mirror_path(url).with_suffix(".md")
-
     def external_record_path(self, job_id: str, url: str) -> Path:
         domain = _slugify(urlparse(url).netloc.lstrip("www."))
         return self.job_dir(job_id) / "externals" / domain / _mirror_path(url).with_suffix(".json")
-
-    def external_markdown_path(self, job_id: str, url: str) -> Path:
-        domain = _slugify(urlparse(url).netloc.lstrip("www."))
-        return self.job_dir(job_id) / "externals" / domain / _mirror_path(url).with_suffix(".md")
 
     def crawl_log_path(self, job_id: str) -> Path:
         return self.job_dir(job_id) / "crawl.log.jsonl"
@@ -146,10 +139,8 @@ class JobStorage:
         self._ensure_dirs(job_id)
         raw_path = self.raw_page_path(job_id, record.url)
         clean_path = self.clean_page_path(job_id, record.url)
-        md_path = self.markdown_page_path(job_id, record.url)
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         clean_path.parent.mkdir(parents=True, exist_ok=True)
-        md_path.parent.mkdir(parents=True, exist_ok=True)
 
         raw_doc = {
             "url": record.url,
@@ -175,14 +166,10 @@ class JobStorage:
         _write_text_atomic(raw_path, json.dumps(raw_doc, indent=2, sort_keys=True))
         record.source_file = str(clean_path.relative_to(self.job_dir(job_id)))
         _write_text_atomic(clean_path, json.dumps(record.to_dict(), indent=2, sort_keys=True))
-        _write_text_atomic(md_path, record.markdown or "")
         if record.source_type == "external":
             external_json = self.external_record_path(job_id, record.url)
-            external_md = self.external_markdown_path(job_id, record.url)
             external_json.parent.mkdir(parents=True, exist_ok=True)
-            external_md.parent.mkdir(parents=True, exist_ok=True)
             _write_text_atomic(external_json, json.dumps(record.to_dict(), indent=2, sort_keys=True))
-            _write_text_atomic(external_md, record.markdown or "")
 
     def load_page_records(self, job_id: str, source_type: str | None = None) -> list[PageRecord]:
         records: list[PageRecord] = []
@@ -307,7 +294,6 @@ class JobStorage:
         for rel in (
             "pages/raw",
             "pages/clean",
-            "pages/markdown",
             "externals",
             "exports",
         ):

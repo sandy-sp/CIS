@@ -1,21 +1,18 @@
 from __future__ import annotations
 
-import subprocess
-import sys
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 
 import streamlit as st
 
 from company_intel import CrawlSettings, JobRunner
+from company_intel.runtime import launch_worker
 from company_intel.storage import JobStorage
 from scraper.snooper import Snooper
 
 
 _STORAGE = JobStorage()
 _ACTIVE_JOB_STATUSES = {"queued", "discovering", "crawling", "processing"}
-_ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 def _ensure_state(state=None) -> None:
@@ -110,18 +107,22 @@ def _start_job(start_url: str, max_pages: int, rate_limit: float, ignore_robots:
     runner = JobRunner(storage=_STORAGE)
     job = runner.create_job(settings)
     _STORAGE.clear_cancel_request(job.job_id)
-
-    worker_log = _STORAGE.job_dir(job.job_id) / "worker.log"
-    with worker_log.open("ab") as log_handle:
-        proc = subprocess.Popen(
-            [sys.executable, "-m", "company_intel.worker", job.job_id],
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            cwd=str(_ROOT_DIR),
-            close_fds=True,
-        )
-    _STORAGE.save_worker_pid(job.job_id, proc.pid)
+    launch_worker(job.job_id, storage=_STORAGE)
     return job.job_id
+
+
+def _resume_job(job_id: str) -> str:
+    runner = JobRunner(storage=_STORAGE)
+    job = runner.resume_job(job_id)
+    launch_worker(job.job_id, storage=_STORAGE)
+    return job.job_id
+
+
+def _can_resume(job: dict) -> bool:
+    return (
+        job.get("status") in {"failed", "cancelled"}
+        and not _STORAGE.worker_is_running(str(job.get("job_id") or ""))
+    )
 
 
 def _render_job_summary(job: dict) -> None:
@@ -166,6 +167,26 @@ def _render_live_log(job_id: str) -> None:
             "Reason": row.get("reason", ""),
         })
     st.dataframe(table, use_container_width=True, hide_index=True)
+
+
+def _render_terminal_banner(job: dict) -> None:
+    status = str(job.get("status") or "")
+    finished_at = str(job.get("finished_at") or "").replace("T", " ")[:19]
+    if status == "completed":
+        message = "Crawl completed."
+        if finished_at:
+            message += f" Finished at {finished_at}."
+        st.success(f"{message} Downloads are available on the Jobs page.")
+    elif status == "cancelled":
+        message = "Crawl cancelled."
+        if finished_at:
+            message += f" Stopped at {finished_at}."
+        st.warning(f"{message} You can resume this job from its saved progress.")
+    elif status == "failed":
+        message = "Crawl failed."
+        if finished_at:
+            message += f" Last update at {finished_at}."
+        st.error(f"{message} You can resume this job from its saved progress.")
 
 
 def scrape_page() -> None:
@@ -249,4 +270,31 @@ def scrape_page() -> None:
     elif not _STORAGE.list_jobs():
         st.info("No scrape jobs yet. Preview a site map or start a crawl to begin.")
     else:
-        st.info("No active crawl job. Open the Jobs page to inspect saved runs and downloads.")
+        selected_job_id = str(st.session_state.get("selected_job_id") or "").strip()
+        selected_job = None
+        if selected_job_id:
+            try:
+                selected_job = _STORAGE.load_job(selected_job_id).to_dict()
+            except Exception:
+                st.session_state.selected_job_id = ""
+
+        if not selected_job:
+            latest_jobs = _STORAGE.list_jobs()
+            if latest_jobs:
+                selected_job = latest_jobs[0].to_dict()
+                st.session_state.selected_job_id = selected_job["job_id"]
+
+        if selected_job:
+            st.subheader("Latest Saved Job")
+            _render_terminal_banner(selected_job)
+            _render_job_summary(selected_job)
+            _render_live_log(selected_job["job_id"])
+            if _can_resume(selected_job):
+                if st.button("Resume This Crawl", key="resume_selected_crawl"):
+                    job_id = _resume_job(selected_job["job_id"])
+                    st.session_state.active_job_id = job_id
+                    st.session_state.selected_job_id = job_id
+                    st.session_state.current_page = "Scrape"
+                    st.rerun()
+        else:
+            st.info("No active crawl job. Open the Jobs page to inspect saved runs and downloads.")

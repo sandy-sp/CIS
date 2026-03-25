@@ -23,12 +23,11 @@ def test_job_storage_mirrors_url_paths(tmp_path):
 
     raw_path = storage.raw_page_path(job.job_id, record.url)
     clean_path = storage.clean_page_path(job.job_id, record.url)
-    md_path = storage.markdown_page_path(job.job_id, record.url)
 
     assert raw_path.exists()
     assert clean_path.exists()
-    assert md_path.exists()
     assert "services" in str(clean_path)
+    assert not (storage.job_dir(job.job_id) / "pages" / "markdown").exists()
 
 
 def test_job_storage_loads_saved_records(tmp_path):
@@ -94,7 +93,7 @@ def test_job_storage_writes_external_artifacts(tmp_path):
     storage.save_page_record(job.job_id, record)
 
     assert storage.external_record_path(job.job_id, record.url).exists()
-    assert storage.external_markdown_path(job.job_id, record.url).exists()
+    assert not list((storage.job_dir(job.job_id) / "externals").rglob("*.md"))
 
 
 def test_load_job_retries_transient_empty_json(tmp_path):

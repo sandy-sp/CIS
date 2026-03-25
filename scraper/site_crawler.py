@@ -53,6 +53,8 @@ class SiteCrawler:
         engine_router: EngineRouter | None = None,
         browser_engine=None,
         static_engine=None,
+        visited_urls: list[str] | None = None,
+        processed_count: int = 0,
     ):
         self.snooper = snooper
         self.max_pages = max_pages
@@ -68,9 +70,11 @@ class SiteCrawler:
         self.browser = browser_engine
         self.static = static_engine
         self.discovered_count = 0
-        self.processed_count = 0
+        self.processed_count = processed_count
         self._enqueued: set[str] = set()
-        self._visited: set[str] = set()
+        self._visited: set[str] = {
+            _normalize_url(url) for url in (visited_urls or [])
+        }
 
     async def crawl(
         self,

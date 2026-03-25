@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from company_intel import JobRunner
+from company_intel.runtime import launch_worker
 from company_intel.storage import JobStorage
 
 
@@ -13,9 +15,13 @@ def _job_label(job: dict) -> str:
     return f"{job.get('domain', '')} | {job.get('status', '')} | {created} | {job.get('job_id', '')}"
 
 
+def _can_resume(job) -> bool:
+    return job.status in {"failed", "cancelled"} and not _STORAGE.worker_is_running(job.job_id)
+
+
 def jobs_page() -> None:
     st.title("Jobs & Downloads")
-    st.caption("Inspect completed scrape runs, review the saved corpus, and download job artifacts.")
+    st.caption("Inspect saved scrape runs, resume interrupted jobs, review the saved corpus, and download job artifacts.")
 
     jobs = [job.to_dict() for job in _STORAGE.list_jobs()]
     if not jobs:
@@ -51,6 +57,16 @@ def jobs_page() -> None:
     c7.metric("Words", f"{job.total_words:,}")
     c8.metric("Robots.txt", "Found" if job.robots_txt_found else "Not found")
     c9.metric("LLM.txt", "Found" if job.llm_txt_found else "Not found")
+
+    if _can_resume(job):
+        if st.button("Resume Crawl", key=f"resume_{job.job_id}"):
+            runner = JobRunner(storage=_STORAGE)
+            resumed = runner.resume_job(job.job_id)
+            launch_worker(resumed.job_id, storage=_STORAGE)
+            st.session_state.active_job_id = resumed.job_id
+            st.session_state.selected_job_id = resumed.job_id
+            st.session_state.current_page = "Scrape"
+            st.rerun()
 
     excel_path = _STORAGE.job_dir(selected_job_id) / "exports" / "intel.xlsx"
     entities_path = _STORAGE.job_dir(selected_job_id) / "exports" / "entities.json"

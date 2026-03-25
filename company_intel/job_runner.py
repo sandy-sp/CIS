@@ -4,9 +4,10 @@ import asyncio
 import os
 from queue import Queue
 from datetime import datetime, timezone
-from urllib.parse import urldefrag, urlparse
+from urllib.parse import urldefrag, urljoin, urlparse
 
 import redis
+from bs4 import BeautifulSoup
 
 from app_settings import SettingsStore, default_ollama_url
 from company_intel.classifier import PageClassifier
@@ -52,6 +53,18 @@ class JobRunner:
     def create_job(self, settings: CrawlSettings) -> CrawlJob:
         return self.storage.create_job(settings)
 
+    def resume_job(self, job_id: str) -> CrawlJob:
+        job = self.storage.load_job(job_id)
+        if job.status in {"discovering", "crawling", "processing"}:
+            raise ValueError("This crawl is already active.")
+
+        records = self.storage.load_page_records(job_id)
+        self._prepare_resume(job, records)
+        self.storage.clear_cancel_request(job_id)
+        self.storage.clear_worker_pid(job_id)
+        self.storage.save_job(job)
+        return job
+
     def run(self, job_id: str, result_queue: Queue | None = None, cancel_flag: list | None = None) -> None:
         asyncio.run(self._run(job_id, result_queue=result_queue, cancel_flag=cancel_flag or []))
 
@@ -69,8 +82,20 @@ class JobRunner:
         cancel_flag = cancel_flag or []
         job = self.storage.load_job(job_id)
         self.storage.clear_cancel_request(job_id)
+        resume_records = self.storage.load_page_records(job_id)
+        visited_urls = [record.normalized_url or record.url for record in resume_records]
+        is_resume = bool(resume_records) and job.status in {"failed", "cancelled"}
 
         try:
+            if is_resume:
+                self._prepare_resume(job, resume_records)
+                self.storage.save_job(job)
+                self.storage.append_crawl_log(job_id, {
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                    "level": "info",
+                    "message": f"Resuming crawl from {len(resume_records)} saved pages",
+                })
+
             job.status = "discovering"
             self.storage.save_job(job)
             self._emit_job_update(result_queue, job)
@@ -87,6 +112,8 @@ class JobRunner:
             job.pages_total = len(seed_urls)
             if job.settings.ignore_robots_exclusions:
                 job.warnings = sorted(set(job.warnings + ["robots.txt and llm.txt exclusions are ignored for crawling"]))
+            crawl_seed_urls = self._build_crawl_seed_urls(job, seed_urls, resume_records)
+            job.pages_total = max(job.pages_total, len(crawl_seed_urls), len(visited_urls))
             self.storage.save_job(job)
             self.storage.append_crawl_log(job_id, {
                 "timestamp": datetime.now(tz=timezone.utc).isoformat(),
@@ -103,10 +130,12 @@ class JobRunner:
                 ignore_robots_exclusions=job.settings.ignore_robots_exclusions,
                 rate_limit=snooper.crawl_delay,
                 engine_router=EngineRouter(),
+                visited_urls=visited_urls,
+                processed_count=len(visited_urls),
             )
 
             async for result in crawler.crawl(
-                seed_urls,
+                crawl_seed_urls,
                 cancel_requested=lambda: bool(cancel_flag) or self.storage.cancel_requested(job_id),
             ):
                 record = self._build_record(job, result)
@@ -217,6 +246,51 @@ class JobRunner:
         record.page_category = category
         record.page_subtype = subtype
         record.category_confidence = confidence
+
+    def _prepare_resume(self, job: CrawlJob, records: list[PageRecord]) -> None:
+        job.status = "queued"
+        job.finished_at = ""
+        job.errors = []
+        resumed_warning = f"Resumed crawl from {len(records)} saved pages."
+        job.warnings = sorted(set(warning for warning in job.warnings if "worker process stopped unexpectedly" not in warning.lower()))
+        job.warnings = sorted(set(job.warnings + [resumed_warning]))
+
+    def _build_crawl_seed_urls(self, job: CrawlJob, seed_urls: list[str], records: list[PageRecord]) -> list[str]:
+        if not records:
+            return seed_urls
+
+        urls: list[str] = list(seed_urls)
+        for record in records:
+            if record.source_type != "internal" or record.status != "success":
+                continue
+            urls.extend(self._extract_resume_links(job, record))
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for url in urls:
+            normalized = self._normalize_url(url)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(url)
+        return deduped
+
+    def _extract_resume_links(self, job: CrawlJob, record: PageRecord) -> list[str]:
+        if not record.raw_html:
+            return []
+
+        links: list[str] = []
+        soup = BeautifulSoup(record.raw_html, "html.parser")
+        for anchor in soup.find_all("a", href=True):
+            href = (anchor.get("href") or "").strip()
+            if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+                continue
+            absolute = urldefrag(urljoin(record.url, href)).url
+            parsed = urlparse(absolute)
+            domain = parsed.netloc.lstrip("www.").lower()
+            if parsed.scheme in {"http", "https"} and domain == job.domain.lower():
+                links.append(absolute)
+        return links
 
     def _update_job_counts(self, job: CrawlJob, record: PageRecord) -> None:
         skip_reason = str((record.metadata or {}).get("skip_reason", "")).lower()

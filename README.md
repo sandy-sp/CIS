@@ -23,10 +23,11 @@ Each completed job is written under `data/jobs/<job_id>/` and includes:
 - `crawl.log.jsonl`
 - `pages/raw/*.json`
 - `pages/clean/*.json`
-- `pages/markdown/*.md`
 - `exports/intel.xlsx`
 - `exports/entities.json`
 - `exports/corpus.jsonl`
+
+Only JSON artifacts are persisted for page content. Markdown is kept only inside the saved JSON records when the crawler extracts it as an intermediate text representation.
 
 ## Excel Sheets
 
