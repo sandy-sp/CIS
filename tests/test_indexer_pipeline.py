@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock
 from company_intel.models import CrawlSettings, PageRecord
 from company_intel.storage import JobStorage
-from indexer.pipeline import IndexerPipeline, _page_record_to_chunks
+from indexer.pipeline import IndexerPipeline, _page_record_to_chunks, _record_source_text
 from indexer.embedder import Embedder
 
 
@@ -226,3 +226,21 @@ def test_replace_job_collection_removes_rejected_external_vectors(tmp_path, mock
 
     list(pipeline.replace_job_collection(job.job_id, include_external=True))
     assert pipeline.get_stats()["total_vectors"] == 0
+
+
+def test_record_source_text_prefers_clean_json_text_over_markdown():
+    record = PageRecord(
+        url="https://example.com/services/cloud",
+        normalized_url="https://example.com/services/cloud",
+        domain="example.com",
+        path="/services/cloud",
+        title="Cloud Services",
+        markdown="# Cloud Services\n\nOld markdown text",
+        clean_text="Normalized clean text from saved JSON.",
+        raw_text="Raw text fallback",
+        page_category="services",
+        status="success",
+        word_count=5,
+    )
+
+    assert _record_source_text(record) == "Normalized clean text from saved JSON."

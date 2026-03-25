@@ -25,12 +25,12 @@ def _is_indexable_record(record: PageRecord, include_external: bool = True) -> b
         return False
     if record.source_type == "external" and not is_record_approved_for_outputs(record):
         return False
-    source_text = (record.markdown or record.clean_text or record.raw_text or "").strip()
+    source_text = _record_source_text(record)
     return bool(source_text)
 
 
 def _record_source_text(record: PageRecord) -> str:
-    return (record.markdown or record.clean_text or record.raw_text or "").strip()
+    return (record.clean_text or record.raw_text or record.markdown or "").strip()
 
 
 def _page_record_to_chunks(record: PageRecord, job_id: str = "") -> list[dict]:

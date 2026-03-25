@@ -1,7 +1,10 @@
 import streamlit as st
 
+from pages.chat_page import chat_page
+from pages.index_page import index_page
 from pages.jobs_page import jobs_page
 from pages.scrape_page import scrape_page, sync_active_crawl_state
+from pages.settings_page import settings_page
 
 
 def _inject_app_styles() -> None:
@@ -46,6 +49,9 @@ def main() -> None:
     pages = {
         "Scrape": scrape_page,
         "Jobs": jobs_page,
+        "Settings": settings_page,
+        "Index": index_page,
+        "Chat": chat_page,
     }
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Scrape"

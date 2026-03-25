@@ -67,6 +67,11 @@ def jobs_page() -> None:
             st.session_state.selected_job_id = resumed.job_id
             st.session_state.next_page = "Scrape"
             st.rerun()
+    elif job.status == "completed":
+        if st.button("Open In Index", key=f"open_index_{job.job_id}"):
+            st.session_state.selected_job_id = job.job_id
+            st.session_state.next_page = "Index"
+            st.rerun()
 
     excel_path = _STORAGE.job_dir(selected_job_id) / "exports" / "intel.xlsx"
     entities_path = _STORAGE.job_dir(selected_job_id) / "exports" / "entities.json"
