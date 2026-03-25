@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 from company_intel.models import CrawlSettings, PageRecord
 from company_intel.storage import JobStorage, collection_name_for_job
@@ -94,3 +95,14 @@ def test_job_storage_writes_external_artifacts(tmp_path):
 
     assert storage.external_record_path(job.job_id, record.url).exists()
     assert storage.external_markdown_path(job.job_id, record.url).exists()
+
+
+def test_load_job_retries_transient_empty_json(tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    valid_payload = (storage.job_dir(job.job_id) / "job.json").read_text(encoding="utf-8")
+
+    with patch.object(Path, "read_text", side_effect=["", valid_payload]):
+        loaded = storage.load_job(job.job_id)
+
+    assert loaded.job_id == job.job_id

@@ -28,7 +28,12 @@ def jobs_page() -> None:
         options=job_ids,
         format_func=lambda job_id: _job_label(next(job for job in jobs if job["job_id"] == job_id)),
     )
-    job = _STORAGE.load_job(selected_job_id)
+    try:
+        job = _STORAGE.load_job(selected_job_id)
+    except Exception:
+        st.info("Refreshing saved jobs...")
+        st.rerun()
+        return
     records = _STORAGE.load_page_records(selected_job_id)
     entities = _STORAGE.load_entities(selected_job_id)
     job_bundle = _STORAGE.bundle_job(selected_job_id)

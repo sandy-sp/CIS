@@ -204,7 +204,13 @@ def scrape_page() -> None:
 
     active_job_id = st.session_state.get("active_job_id", "")
     if active_job_id:
-        job = _STORAGE.load_job(active_job_id).to_dict()
+        try:
+            job = _STORAGE.load_job(active_job_id).to_dict()
+        except Exception:
+            sync_active_crawl_state(st.session_state)
+            st.info("Refreshing crawl state...")
+            time.sleep(0.2)
+            st.rerun()
         _render_job_summary(job)
         _render_live_log(active_job_id)
 

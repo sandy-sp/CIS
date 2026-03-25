@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
+import tempfile
+import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +36,41 @@ def _mirror_path(url: str) -> Path:
     return Path(*parts)
 
 
+def _write_text_atomic(path: Path, content: str, *, encoding: str = "utf-8") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding=encoding,
+        dir=path.parent,
+        delete=False,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    ) as handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+        temp_name = handle.name
+    os.replace(temp_name, path)
+
+
+def _read_json_with_retry(path: Path, *, retries: int = 5, delay: float = 0.05) -> dict:
+    last_error: Exception | None = None
+    for attempt in range(retries):
+        try:
+            raw = path.read_text(encoding="utf-8")
+            if not raw.strip():
+                raise json.JSONDecodeError("empty content", raw, 0)
+            return json.loads(raw)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            if attempt >= retries - 1:
+                raise
+            time.sleep(delay)
+    if last_error:
+        raise last_error
+    raise RuntimeError(f"Unable to read JSON from {path}")
+
+
 class JobStorage:
     def __init__(self, base_dir: Path = _DEFAULT_BASE):
         self.base_dir = base_dir
@@ -60,17 +98,17 @@ class JobStorage:
     def save_job(self, job: CrawlJob) -> None:
         job.touch()
         path = self.job_dir(job.job_id) / "job.json"
-        path.write_text(json.dumps(job.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+        _write_text_atomic(path, json.dumps(job.to_dict(), indent=2, sort_keys=True))
 
     def load_job(self, job_id: str) -> CrawlJob:
         path = self.job_dir(job_id) / "job.json"
-        return CrawlJob.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        return CrawlJob.from_dict(_read_json_with_retry(path))
 
     def list_jobs(self, status: str | None = None) -> list[CrawlJob]:
         jobs: list[CrawlJob] = []
         for path in sorted(self.base_dir.glob("*/job.json"), reverse=True):
             try:
-                job = CrawlJob.from_dict(json.loads(path.read_text(encoding="utf-8")))
+                job = CrawlJob.from_dict(_read_json_with_retry(path))
             except Exception:
                 continue
             if status and job.status != status:
@@ -134,17 +172,17 @@ class JobStorage:
             "outbound_links": record.outbound_links,
             "metadata": record.metadata,
         }
-        raw_path.write_text(json.dumps(raw_doc, indent=2, sort_keys=True), encoding="utf-8")
+        _write_text_atomic(raw_path, json.dumps(raw_doc, indent=2, sort_keys=True))
         record.source_file = str(clean_path.relative_to(self.job_dir(job_id)))
-        clean_path.write_text(json.dumps(record.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
-        md_path.write_text(record.markdown or "", encoding="utf-8")
+        _write_text_atomic(clean_path, json.dumps(record.to_dict(), indent=2, sort_keys=True))
+        _write_text_atomic(md_path, record.markdown or "")
         if record.source_type == "external":
             external_json = self.external_record_path(job_id, record.url)
             external_md = self.external_markdown_path(job_id, record.url)
             external_json.parent.mkdir(parents=True, exist_ok=True)
             external_md.parent.mkdir(parents=True, exist_ok=True)
-            external_json.write_text(json.dumps(record.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
-            external_md.write_text(record.markdown or "", encoding="utf-8")
+            _write_text_atomic(external_json, json.dumps(record.to_dict(), indent=2, sort_keys=True))
+            _write_text_atomic(external_md, record.markdown or "")
 
     def load_page_records(self, job_id: str, source_type: str | None = None) -> list[PageRecord]:
         records: list[PageRecord] = []
@@ -152,7 +190,10 @@ class JobStorage:
         if not clean_dir.exists():
             return records
         for path in sorted(clean_dir.rglob("*.json")):
-            record = PageRecord.from_dict(json.loads(path.read_text(encoding="utf-8")))
+            try:
+                record = PageRecord.from_dict(_read_json_with_retry(path))
+            except Exception:
+                continue
             if source_type and record.source_type != source_type:
                 continue
             records.append(record)
@@ -201,7 +242,7 @@ class JobStorage:
         export_dir.mkdir(parents=True, exist_ok=True)
         output = export_dir / "corpus.jsonl"
         lines = [json.dumps(record.to_dict(), sort_keys=True) for record in records]
-        output.write_text("\n".join(lines), encoding="utf-8")
+        _write_text_atomic(output, "\n".join(lines))
         return output
 
     def write_entities(self, job_id: str, entities: dict[str, list[ExtractedEntity]]) -> Path:
@@ -212,14 +253,14 @@ class JobStorage:
             key: [entity.to_dict() for entity in values]
             for key, values in entities.items()
         }
-        output.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        _write_text_atomic(output, json.dumps(payload, indent=2, sort_keys=True))
         return output
 
     def load_entities(self, job_id: str) -> dict[str, list[ExtractedEntity]]:
         path = self.job_dir(job_id) / "exports" / "entities.json"
         if not path.exists():
             return {}
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = _read_json_with_retry(path)
         entities: dict[str, list[ExtractedEntity]] = {}
         for key, values in payload.items():
             if not isinstance(values, list):
