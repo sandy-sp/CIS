@@ -7,36 +7,11 @@ services:
     volumes:
       - ./output:/app/output
       - ./data:/app/data
-    environment:
-      - REDIS_URL=redis://redis:6379
-      - QDRANT_URL=http://qdrant:6333
-      - OLLAMA_URL=http://ollama:11434
-      - APP_DEFAULT_LLM_BACKEND=ollama
-      - APP_DEFAULT_EMBEDDING_BACKEND=ollama
-      - APP_DEFAULT_OLLAMA_LLM_MODEL=llama3.2:3b
-      - APP_DEFAULT_OLLAMA_EMBEDDING_MODEL=nomic-embed-text
-    depends_on:
-      redis:
-        condition: service_healthy
-      qdrant:
-        condition: service_started
-      ollama-init:
-        condition: service_completed_successfully
     stop_grace_period: 15s
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis_data:/data
-    command: redis-server --save 60 1 --loglevel warning
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
 
   qdrant:
     image: qdrant/qdrant:latest
+    profiles: ["rag"]
     ports:
       - "6333:6333"
     volumes:
@@ -44,6 +19,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
+    profiles: ["rag"]
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
@@ -55,6 +31,7 @@ services:
 
   ollama-init:
     image: b_s-app
+    profiles: ["rag"]
     environment:
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_BOOTSTRAP_MODELS=nomic-embed-text,llama3.2:3b
@@ -64,6 +41,5 @@ services:
     entrypoint: ["python", "scripts/bootstrap_ollama_models.py"]
 
 volumes:
-  redis_data:
   qdrant_storage:
   ollama_data:

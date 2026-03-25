@@ -4,7 +4,7 @@ import asyncio
 import os
 from queue import Queue
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urldefrag, urlparse
 
 import redis
 
@@ -12,7 +12,6 @@ from app_settings import SettingsStore, default_ollama_url
 from company_intel.classifier import PageClassifier
 from company_intel.cleaner import CorpusCleaner
 from company_intel.exporter import IntelExporter
-from company_intel.external import ExternalCollector
 from company_intel.extractor import UniversalExtractor
 from company_intel.models import CrawlJob, CrawlSettings, PageRecord
 from company_intel.review import filter_records_for_outputs
@@ -20,9 +19,8 @@ from company_intel.storage import JobStorage, collection_name_for_job
 from indexer.embedder import Embedder
 from indexer.pipeline import IndexerPipeline, _is_indexable_record
 from indexer.registry import IndexRegistry
-from scraper.hybrid_scraper import HybridScraper
 from scraper.page_probe import EngineRouter
-from scraper.queue_manager import QueueManager
+from scraper.site_crawler import SiteCrawler
 from scraper.snooper import Snooper
 
 
@@ -50,7 +48,6 @@ class JobRunner:
         self.cleaner = CorpusCleaner()
         self.extractor = UniversalExtractor()
         self.exporter = IntelExporter()
-        self.external_collector = ExternalCollector()
 
     def create_job(self, settings: CrawlSettings) -> CrawlJob:
         return self.storage.create_job(settings)
@@ -71,11 +68,7 @@ class JobRunner:
     async def _run(self, job_id: str, result_queue: Queue | None = None, cancel_flag: list | None = None) -> None:
         cancel_flag = cancel_flag or []
         job = self.storage.load_job(job_id)
-        redis_client = self._get_redis_client()
-        qm = QueueManager(job.domain, redis_client=redis_client)
-        qm.flush()
-        live_index_pipeline: IndexerPipeline | None = None
-        live_index_target: dict | None = None
+        self.storage.clear_cancel_request(job_id)
 
         try:
             job.status = "discovering"
@@ -95,50 +88,33 @@ class JobRunner:
             if job.settings.ignore_robots_exclusions:
                 job.warnings = sorted(set(job.warnings + ["robots.txt and llm.txt exclusions are ignored for crawling"]))
             self.storage.save_job(job)
-
-            qm.update_meta(
-                has_llm_txt=str(snooper.has_llm_txt),
-                has_robots_txt=str(snooper.has_robots_txt),
-                seed_source=snooper.seed_source,
-                seed_count=str(len(seed_urls)),
-                pages_found=len(seed_urls),
-                pages_done=0,
-                total_words=0,
-            )
-            for url in seed_urls:
-                qm.enqueue(url)
-
-            if job.settings.enable_rag_index:
-                live_index_pipeline, live_index_target, warning = self._prepare_live_index(job)
-                if warning:
-                    job.warnings = sorted(set(job.warnings + [warning]))
-                    self.storage.save_job(job)
+            self.storage.append_crawl_log(job_id, {
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                "level": "info",
+                "message": f"Discovered {len(seed_urls)} seed URLs via {snooper.seed_source}",
+            })
 
             job.status = "crawling"
             self.storage.save_job(job)
             self._emit_job_update(result_queue, job)
-            scraper = HybridScraper(
-                qm,
+            crawler = SiteCrawler(
                 snooper,
                 max_pages=job.settings.max_pages,
-                cancel_flag=cancel_flag,
                 ignore_robots_exclusions=job.settings.ignore_robots_exclusions,
-                persist_raw_markdown=False,
-                keep_duplicate_pages=True,
+                rate_limit=snooper.crawl_delay,
                 engine_router=EngineRouter(),
-                enable_static_salvage=True,
             )
 
-            async for result in scraper.crawl(job.settings.start_url):
-                record = self._build_record(job, qm, result)
+            async for result in crawler.crawl(
+                seed_urls,
+                cancel_requested=lambda: bool(cancel_flag) or self.storage.cancel_requested(job_id),
+            ):
+                record = self._build_record(job, result)
                 self.storage.save_page_record(job.job_id, record)
+                job.pages_total = max(job.pages_total, crawler.discovered_count)
                 self._update_job_counts(job, record)
-                if live_index_pipeline is not None:
-                    index_warning = self._index_live_records(live_index_pipeline, job, [record])
-                    if index_warning:
-                        live_index_pipeline = None
-                        job.warnings = sorted(set(job.warnings + [index_warning]))
                 self.storage.save_job(job)
+                self.storage.append_crawl_log(job_id, self._log_entry(record))
                 if result_queue:
                     result_queue.put({
                         "type": "page",
@@ -146,13 +122,19 @@ class JobRunner:
                         "record": record.to_dict(),
                     })
 
-            if cancel_flag:
+            if cancel_flag or self.storage.cancel_requested(job_id):
                 job.status = "cancelled"
+                job.finished_at = datetime.now(tz=timezone.utc).isoformat()
                 self.storage.save_job(job)
+                self.storage.append_crawl_log(job_id, {
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                    "level": "warning",
+                    "message": "Crawl cancelled",
+                })
                 self._emit_complete(result_queue, job)
                 return
 
-            job.status = "cleaning"
+            job.status = "processing"
             self.storage.save_job(job)
             self._emit_job_update(result_queue, job)
             internal_records = self.storage.load_page_records(job.job_id, source_type="internal")
@@ -164,44 +146,32 @@ class JobRunner:
                 self.storage.save_page_record(job.job_id, record)
 
             all_records = self.storage.load_page_records(job.job_id)
-
-            if job.settings.follow_external_sources:
-                job.status = "external_enrichment"
-                self.storage.save_job(job)
-                self._emit_job_update(result_queue, job)
-                external_report = self.external_collector.collect(
-                    qm.get_external_links(),
-                    domain=job.domain,
-                    internal_records=internal_records,
-                )
-                for record in external_report.records:
-                    self.storage.save_page_record(job.job_id, record)
-                if external_report.warnings:
-                    job.warnings = sorted(set(job.warnings + external_report.warnings))
-                job.external_pages = len(external_report.records)
-                self.storage.save_job(job)
-                all_records = self.storage.load_page_records(job.job_id)
-
-            job.status = "extracting"
-            self.storage.save_job(job)
-            self._emit_job_update(result_queue, job)
             self._write_outputs(job, all_records)
-
-            if live_index_pipeline is not None and live_index_target is not None:
-                final_index_warning = self._finalize_live_index(job, live_index_pipeline, live_index_target)
-                if final_index_warning:
-                    job.warnings = sorted(set(job.warnings + [final_index_warning]))
 
             job.status = "completed"
             job.finished_at = datetime.now(tz=timezone.utc).isoformat()
             self.storage.save_job(job)
+            self.storage.append_crawl_log(job_id, {
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                "level": "success",
+                "message": "Crawl completed",
+            })
             self._emit_complete(result_queue, job)
         except Exception as exc:
             job.status = "failed"
+            job.finished_at = datetime.now(tz=timezone.utc).isoformat()
             job.errors = sorted(set(job.errors + [str(exc)]))
             self.storage.save_job(job)
+            self.storage.append_crawl_log(job_id, {
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                "level": "error",
+                "message": str(exc),
+            })
             self._emit_complete(result_queue, job)
             raise
+        finally:
+            self.storage.clear_cancel_request(job_id)
+            self.storage.clear_worker_pid(job_id)
 
     def refresh_outputs(self, job_id: str) -> None:
         job = self.storage.load_job(job_id)
@@ -209,12 +179,12 @@ class JobRunner:
         self._write_outputs(job, all_records)
         self.storage.save_job(job)
 
-    def _build_record(self, job: CrawlJob, qm: QueueManager, result) -> PageRecord:
+    def _build_record(self, job: CrawlJob, result) -> PageRecord:
         parsed = urlparse(result.url)
         markdown_body = _strip_frontmatter(result.markdown or "")
         record = PageRecord(
             url=result.url,
-            normalized_url=qm.normalize(result.url),
+            normalized_url=self._normalize_url(result.url),
             domain=parsed.netloc.lstrip("www."),
             path=parsed.path or "/",
             source_type="internal",
@@ -230,7 +200,7 @@ class JobRunner:
             page_subtype="",
             category_confidence=0.5,
             status=result.status,
-            status_code=200 if result.status == "success" else 0,
+            status_code=result.status_code or (200 if result.status == "success" else 0),
             engine_selected=result.engine_used,
             engine_used=result.engine_used,
             robots_disallowed=False,
@@ -249,27 +219,59 @@ class JobRunner:
         record.category_confidence = confidence
 
     def _update_job_counts(self, job: CrawlJob, record: PageRecord) -> None:
-        if record.status == "success":
+        skip_reason = str((record.metadata or {}).get("skip_reason", "")).lower()
+        if record.status_code in {401, 403} or "http 401" in skip_reason or "http 403" in skip_reason:
+            job.pages_blocked += 1
+            job.pages_failed += 1
+        elif record.status == "success":
             job.pages_scraped += 1
             job.total_words += record.word_count
         elif record.status == "failed":
             job.pages_failed += 1
         else:
             job.pages_skipped += 1
-        job.pages_total = max(job.pages_total, job.pages_scraped + job.pages_failed + job.pages_skipped)
+        job.pages_total = max(
+            job.pages_total,
+            job.pages_scraped + job.pages_failed + job.pages_skipped,
+        )
 
     def _write_outputs(self, job: CrawlJob, records: list[PageRecord]) -> None:
-        approved_records = filter_records_for_outputs(records)
-        entities = self.extractor.extract(approved_records, job.domain)
+        internal_records = [
+            record for record in filter_records_for_outputs(records)
+            if record.source_type == "internal"
+        ]
+        entities = self.extractor.extract(internal_records, job.domain)
         self.storage.write_entities(job.job_id, entities)
-        self.storage.write_corpus_jsonl(job.job_id, approved_records)
+        self.storage.write_corpus_jsonl(job.job_id, internal_records)
         if job.settings.enable_structured_export:
             self.exporter.write_excel(
                 job,
-                approved_records,
+                internal_records,
                 entities,
                 self.storage.job_dir(job.job_id) / "exports" / "intel.xlsx",
             )
+
+    def _normalize_url(self, url: str) -> str:
+        stripped = urldefrag(url.strip()).url
+        parsed = urlparse(stripped)
+        scheme = parsed.scheme.lower()
+        netloc = parsed.netloc.lower()
+        path = parsed.path.rstrip("/") or "/"
+        query = parsed.query
+        return f"{scheme}://{netloc}{path}" + (f"?{query}" if query else "")
+
+    def _log_entry(self, record: PageRecord) -> dict:
+        skip_reason = str((record.metadata or {}).get("skip_reason", "")).strip()
+        return {
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "url": record.url,
+            "status": record.status,
+            "status_code": record.status_code,
+            "engine": record.engine_used,
+            "category": record.page_category,
+            "words": record.word_count,
+            "reason": skip_reason,
+        }
 
     def _prepare_live_index(self, job: CrawlJob) -> tuple[IndexerPipeline | None, dict | None, str]:
         settings = SettingsStore().load()

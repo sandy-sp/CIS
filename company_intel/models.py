@@ -43,6 +43,7 @@ class CrawlJob:
     pages_scraped: int = 0
     pages_failed: int = 0
     pages_skipped: int = 0
+    pages_blocked: int = 0
     external_pages: int = 0
     total_words: int = 0
     llm_txt_found: bool = False

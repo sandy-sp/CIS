@@ -95,6 +95,15 @@ class JobStorage:
         domain = _slugify(urlparse(url).netloc.lstrip("www."))
         return self.job_dir(job_id) / "externals" / domain / _mirror_path(url).with_suffix(".md")
 
+    def crawl_log_path(self, job_id: str) -> Path:
+        return self.job_dir(job_id) / "crawl.log.jsonl"
+
+    def cancel_request_path(self, job_id: str) -> Path:
+        return self.job_dir(job_id) / "cancel.request"
+
+    def worker_pid_path(self, job_id: str) -> Path:
+        return self.job_dir(job_id) / "worker.pid"
+
     def save_page_record(self, job_id: str, record: PageRecord) -> None:
         self._ensure_dirs(job_id)
         raw_path = self.raw_page_path(job_id, record.url)
@@ -148,6 +157,44 @@ class JobStorage:
                 continue
             records.append(record)
         return records
+
+    def append_crawl_log(self, job_id: str, entry: dict) -> None:
+        path = self.crawl_log_path(job_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, sort_keys=True) + "\n")
+
+    def load_crawl_log(self, job_id: str, limit: int = 50) -> list[dict]:
+        path = self.crawl_log_path(job_id)
+        if not path.exists():
+            return []
+        lines = path.read_text(encoding="utf-8").splitlines()
+        rows = []
+        for line in lines[-limit:]:
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return rows
+
+    def request_cancel(self, job_id: str) -> None:
+        self.cancel_request_path(job_id).write_text("cancelled\n", encoding="utf-8")
+
+    def cancel_requested(self, job_id: str) -> bool:
+        return self.cancel_request_path(job_id).exists()
+
+    def clear_cancel_request(self, job_id: str) -> None:
+        path = self.cancel_request_path(job_id)
+        if path.exists():
+            path.unlink()
+
+    def save_worker_pid(self, job_id: str, pid: int) -> None:
+        self.worker_pid_path(job_id).write_text(str(pid), encoding="utf-8")
+
+    def clear_worker_pid(self, job_id: str) -> None:
+        path = self.worker_pid_path(job_id)
+        if path.exists():
+            path.unlink()
 
     def write_corpus_jsonl(self, job_id: str, records: list[PageRecord]) -> Path:
         export_dir = self.job_dir(job_id) / "exports"

@@ -49,13 +49,7 @@ class IntelExporter:
         wb.remove(wb.active)
 
         self._write_summary(wb, job, records, entities)
-        self._write_company_profile(wb, entities.get("company_profile", []))
         self._write_simple_sheet(wb, "Services", entities.get("services", []),
-                                 ["Name", "Summary", "Source URL", "Confidence"],
-                                 lambda entity: [entity.display_name, entity.attributes.get("summary", ""),
-                                                 entity.source_urls[0] if entity.source_urls else "", entity.confidence],
-                                 [32, 70, 55, 14])
-        self._write_simple_sheet(wb, "Industries", entities.get("industries", []),
                                  ["Name", "Summary", "Source URL", "Confidence"],
                                  lambda entity: [entity.display_name, entity.attributes.get("summary", ""),
                                                  entity.source_urls[0] if entity.source_urls else "", entity.confidence],
@@ -96,26 +90,6 @@ class IntelExporter:
                                      entity.confidence,
                                  ],
                                  [38, 20, 20, 18, 55, 14])
-        self._write_simple_sheet(wb, "Resources", entities.get("resources", []),
-                                 ["Name", "Type", "Date", "Summary", "Source URL", "Confidence"],
-                                 lambda entity: [
-                                     entity.display_name,
-                                     entity.attributes.get("resource_type", ""),
-                                     entity.attributes.get("date", ""),
-                                     entity.attributes.get("summary", ""),
-                                     entity.source_urls[0] if entity.source_urls else "",
-                                     entity.confidence,
-                                 ],
-                                 [38, 18, 18, 60, 55, 14])
-        self._write_simple_sheet(wb, "External Profiles", entities.get("external_profiles", []),
-                                 ["Name", "Domain", "URL", "Confidence"],
-                                 lambda entity: [
-                                     entity.display_name,
-                                     entity.attributes.get("domain", ""),
-                                     entity.attributes.get("url", ""),
-                                     entity.confidence,
-                                 ],
-                                 [32, 28, 60, 14])
         self._write_inventory(wb, records)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -133,16 +107,14 @@ class IntelExporter:
             ("Pages scraped", job.pages_scraped),
             ("Pages failed", job.pages_failed),
             ("Pages skipped", job.pages_skipped),
-            ("External pages", job.external_pages),
+            ("Access denied", job.pages_blocked),
             ("Total words", sum(record.word_count for record in records if record.status == "success")),
             ("Services", len(entities.get("services", []))),
-            ("Industries", len(entities.get("industries", []))),
             ("Case Studies", len(entities.get("case_studies", []))),
             ("Partners", len(entities.get("partners", []))),
             ("Customers", len(entities.get("customers", []))),
             ("People", len(entities.get("people", []))),
             ("Events", len(entities.get("events", []))),
-            ("Resources", len(entities.get("resources", []))),
         ]
         _header(ws.cell(row=1, column=1), "Metric")
         _header(ws.cell(row=1, column=2), "Value")
@@ -150,24 +122,6 @@ class IntelExporter:
             ws.cell(row=idx, column=1, value=label)
             ws.cell(row=idx, column=2, value=value)
             _alt_fill(ws, idx, 2)
-        ws.freeze_panes = "A2"
-
-    def _write_company_profile(self, wb, entities: list[ExtractedEntity]) -> None:
-        ws = wb.create_sheet("Company Profile")
-        ws.sheet_view.showGridLines = False
-        headers = ["Name", "Website", "Summary", "Source URL", "Confidence"]
-        widths = [30, 40, 70, 55, 14]
-        _set_widths(ws, widths)
-        for idx, header_name in enumerate(headers, start=1):
-            _header(ws.cell(row=1, column=idx), header_name)
-        for row, entity in enumerate(entities, start=2):
-            ws.cell(row=row, column=1, value=entity.display_name)
-            _link_cell(ws, row, 2, entity.attributes.get("website", ""), entity.attributes.get("website", ""))
-            ws.cell(row=row, column=3, value=entity.attributes.get("summary", "")).alignment = Alignment(wrap_text=True)
-            source_url = entity.source_urls[0] if entity.source_urls else ""
-            _link_cell(ws, row, 4, source_url, source_url)
-            ws.cell(row=row, column=5, value=entity.confidence)
-            _alt_fill(ws, row, len(headers))
         ws.freeze_panes = "A2"
 
     def _write_simple_sheet(self, wb, name: str, entities: list[ExtractedEntity], headers, row_fn, widths) -> None:

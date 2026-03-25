@@ -68,6 +68,11 @@ class Crawl4AIEngine:
                 return result, links
 
             meta = crawl_result.metadata or {}
+            result.status_code = int(
+                getattr(crawl_result, "status_code", 0)
+                or getattr(crawl_result, "response_status_code", 0)
+                or 0
+            )
             result.title = meta.get("title", "")
             result.description = meta.get("description", "")
             result.language = meta.get("language", "")

@@ -25,11 +25,13 @@ class StaticEngine:
             return result
 
         if resp.status_code >= 400:
+            result.status_code = resp.status_code
             result.status = "failed"
             result.skip_reason = f"static http {resp.status_code}"
             return result
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        original_html = resp.text
+        soup = BeautifulSoup(original_html, "html.parser")
         for selector in ("nav", "footer", "header", "script", "style", "noscript"):
             for tag in soup.select(selector):
                 tag.decompose()
@@ -56,7 +58,8 @@ class StaticEngine:
         result.canonical_url = canonical_tag.get("href", "").strip() if canonical_tag else url
         html_tag = soup.find("html")
         result.language = html_tag.get("lang", "").strip() if html_tag else ""
-        result.raw_html = clean_html
+        result.raw_html = original_html
         result.markdown = markdown
+        result.status_code = resp.status_code
         result.status = "success"
         return result

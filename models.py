@@ -20,5 +20,6 @@ class PageResult:
     word_count: int = 0
     scraped_at: datetime = field(default_factory=_utcnow)
     engine_used: str = ""
+    status_code: int = 0
     status: str = "failed"
     skip_reason: str = ""
