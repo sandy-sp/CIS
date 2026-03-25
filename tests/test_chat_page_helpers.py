@@ -1,7 +1,11 @@
+from company_intel.models import CrawlSettings, ExtractedEntity
+from company_intel.storage import JobStorage
 from chat.retriever import RetrievedChunk
 from pages.chat_page import (
     _backend_display_label,
     _chunk_log_summary,
+    _entity_bucket_order,
+    _entity_sources_for_question,
     _is_generation_error,
     _retrieval_settings,
     _truncate_for_log,
@@ -79,3 +83,47 @@ def test_backend_display_label_formats_supported_backends():
     assert _backend_display_label("ollama", "llama3.2:3b", "http://ollama:11434") == "Bundled Ollama | llama3.2:3b"
     assert _backend_display_label("openai", "gpt-4o-mini") == "OpenAI API | gpt-4o-mini"
     assert _backend_display_label("local", "BAAI/bge-m3") == "Local model | BAAI/bge-m3"
+
+
+def test_entity_bucket_order_prioritizes_people_questions():
+    buckets = _entity_bucket_order("List the employee names and LinkedIn URLs.")
+
+    assert buckets[0] == "company_profile"
+    assert "people" in buckets
+
+
+def test_entity_sources_for_question_uses_saved_entities(tmp_path, monkeypatch):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    storage.write_entities(
+        job.job_id,
+        {
+            "company_profile": [
+                ExtractedEntity(
+                    entity_type="company_profile",
+                    normalized_key="example",
+                    display_name="Example Co",
+                    attributes={"summary": "Example summary"},
+                    source_urls=["https://example.com/"],
+                )
+            ],
+            "people": [
+                ExtractedEntity(
+                    entity_type="person",
+                    normalized_key="jane-doe",
+                    display_name="Jane Doe",
+                    attributes={"title": "Director", "linkedin_url": "https://linkedin.com/in/jane-doe"},
+                    source_urls=["https://example.com/team"],
+                )
+            ],
+        },
+    )
+
+    monkeypatch.setattr("pages.chat_page._STORAGE", storage)
+
+    sources = _entity_sources_for_question(job.job_id, "List employee names and LinkedIn URLs")
+
+    assert len(sources) == 2
+    assert sources[0]["title"] == "Company Profile | Example Co"
+    assert sources[1]["title"] == "People | Jane Doe"
+    assert "Linkedin Url: https://linkedin.com/in/jane-doe" in sources[1]["text"]

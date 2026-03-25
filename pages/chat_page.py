@@ -16,6 +16,23 @@ from indexer.registry import IndexRegistry
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 _STORAGE = JobStorage()
 _REGISTRY = IndexRegistry()
+_ENTITY_QUERY_MAP = [
+    (("employee", "employees", "people", "team", "staff", "linkedin", "leadership"), ("people",)),
+    (("service", "services", "solution", "solutions", "offering", "offerings", "capability", "capabilities"), ("services",)),
+    (("partner", "partners", "partnership", "alliances"), ("partners",)),
+    (("customer", "customers", "client", "clients"), ("customers",)),
+    (("event", "events", "conference", "conferences", "webinar", "summit", "symposium", "attended", "hosted"), ("events",)),
+    (("case study", "case studies", "success story", "success stories", "project example"), ("case_studies",)),
+]
+_ENTITY_LIMITS = {
+    "company_profile": 1,
+    "people": 20,
+    "services": 10,
+    "partners": 10,
+    "customers": 10,
+    "events": 10,
+    "case_studies": 10,
+}
 
 
 def _truncate_for_log(text: str, limit: int = 120) -> str:
@@ -36,6 +53,68 @@ def _chunk_log_summary(chunks: list) -> str:
             url = getattr(chunk, "url", "")
         labels.append(_truncate_for_log(title or url, limit=60))
     return ", ".join(filter(None, labels))
+
+
+def _normalize_entity_value(value) -> str:
+    if value in (None, "", [], {}):
+        return ""
+    if isinstance(value, list):
+        return ", ".join(str(item).strip() for item in value if str(item).strip())
+    return str(value).strip()
+
+
+def _entity_bucket_order(question: str) -> list[str]:
+    lowered = question.lower()
+    buckets = ["company_profile"]
+    for keywords, mapped_buckets in _ENTITY_QUERY_MAP:
+        if any(keyword in lowered for keyword in keywords):
+            buckets.extend(mapped_buckets)
+    if buckets == ["company_profile"]:
+        buckets.extend(["services", "people", "partners", "events"])
+    ordered: list[str] = []
+    for bucket in buckets:
+        if bucket not in ordered:
+            ordered.append(bucket)
+    return ordered
+
+
+def _entity_to_source(bucket: str, entity) -> dict:
+    lines = [f"{bucket.replace('_', ' ').title()}: {entity.display_name}"]
+    for key, value in sorted(entity.attributes.items()):
+        normalized = _normalize_entity_value(value)
+        if not normalized:
+            continue
+        lines.append(f"{key.replace('_', ' ').title()}: {normalized}")
+    if entity.evidence_snippets:
+        snippet = _normalize_entity_value(entity.evidence_snippets[0])
+        if snippet:
+            lines.append(f"Evidence: {snippet}")
+    return {
+        "url": entity.source_urls[0] if entity.source_urls else "",
+        "title": f"{bucket.replace('_', ' ').title()} | {entity.display_name}",
+        "text": "\n".join(lines),
+        "page_type": bucket,
+        "source_type": "structured-entity",
+    }
+
+
+def _entity_sources_for_question(job_id: str, question: str) -> list[dict]:
+    if not job_id:
+        return []
+    entities = _STORAGE.load_entities(job_id)
+    if not entities:
+        return []
+
+    sources: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for bucket in _entity_bucket_order(question):
+        for entity in entities.get(bucket, [])[:_ENTITY_LIMITS.get(bucket, 5)]:
+            key = (bucket, entity.normalized_key)
+            if key in seen:
+                continue
+            seen.add(key)
+            sources.append(_entity_to_source(bucket, entity))
+    return sources
 
 
 def _is_generation_error(answer: str) -> bool:
@@ -243,6 +322,28 @@ def chat_page() -> None:
                             details=_truncate_for_log(question),
                         )
 
+                    entity_sources = _entity_sources_for_question(
+                        active_target.get("job_id", ""),
+                        question,
+                    )
+                    combined_sources = entity_sources + [
+                        {
+                            "url": c.url,
+                            "title": c.title,
+                            "text": c.text,
+                            "page_type": c.page_type,
+                            "source_type": c.source_type,
+                        }
+                        for c in chunks
+                    ]
+                    if entity_sources:
+                        log_activity(
+                            st.session_state,
+                            "chat",
+                            f"Loaded {len(entity_sources)} structured entity sources for `{collection_name}`",
+                            details=_chunk_log_summary(entity_sources),
+                        )
+
                     # Generate answer
                     gen_kwargs = {"backend": backend, "ollama_url": ollama_url}
                     if api_key:
@@ -252,7 +353,7 @@ def chat_page() -> None:
                     generator = Generator(**gen_kwargs)
                     answer = generator.generate(
                         question=question,
-                        context_chunks=chunks,
+                        context_chunks=combined_sources,
                         history=st.session_state.chat_history[-10:],
                     )
 
@@ -275,20 +376,15 @@ def chat_page() -> None:
                             "chat",
                             f"Generated answer for `{collection_name}`",
                             level="success",
-                            details=f"Chunks used: {len(chunks)} | Question: {_truncate_for_log(question)}",
+                            details=(
+                                f"Structured sources: {len(entity_sources)} | "
+                                f"Vector hits: {len(chunks)} | "
+                                f"Question: {_truncate_for_log(question)}"
+                            ),
                         )
 
                     # Save sources for display
-                    st.session_state.last_sources = [
-                        {
-                            "url": c.url,
-                            "title": c.title,
-                            "text": c.text,
-                            "page_type": c.page_type,
-                            "source_type": c.source_type,
-                        }
-                        for c in chunks
-                    ]
+                    st.session_state.last_sources = combined_sources
 
                 except Exception as exc:
                     error_msg = f"Error: {exc}"

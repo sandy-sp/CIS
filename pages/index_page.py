@@ -58,6 +58,31 @@ def _ensure_index_state() -> None:
     _sync_registry_targets()
 
 
+def _job_index_status_rows(completed_jobs: list, indexed_targets: list[dict]) -> list[dict]:
+    indexed_lookup = {
+        (item.get("job_id", ""), bool(item.get("include_external", True))): item
+        for item in indexed_targets
+        if item.get("job_id")
+    }
+    rows = []
+    for job in completed_jobs:
+        internal = indexed_lookup.get((job.job_id, False))
+        full = indexed_lookup.get((job.job_id, True))
+        latest = max(
+            [value.get("indexed_at", "") for value in (internal, full) if value],
+            default="",
+        )
+        rows.append({
+            "Domain": job.domain,
+            "Job ID": job.job_id,
+            "Pages": job.pages_scraped,
+            "Internal Only": "Indexed" if internal else "Not indexed",
+            "Internal + External": "Indexed" if full else "Not indexed",
+            "Last Indexed": latest[:19].replace("T", " ") if latest else "",
+        })
+    return rows
+
+
 def _job_label(job) -> str:
     created = job.created_at.replace("T", " ")[:19]
     return f"{job.domain} | {job.pages_scraped} pages | {created} | {job.job_id}"
@@ -124,6 +149,13 @@ def index_page() -> None:
     if not completed_jobs:
         st.warning("No completed company-intel jobs are available yet.")
         return
+
+    with st.expander("Job Index Status", expanded=True):
+        st.dataframe(
+            _job_index_status_rows(completed_jobs, indexed_targets),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     default_job_id = st.session_state.get("selected_job_id", "")
     job_ids = [job.job_id for job in completed_jobs]
