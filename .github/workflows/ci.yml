@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run syntax check
+        run: python -m compileall app.py app_settings.py chat company_intel indexer pages scraper tests
+
+      - name: Validate docker compose
+        if: ${{ hashFiles('docker-compose.yml') != '' }}
+        run: docker compose config >/dev/null
+
+      - name: Run test suite
+        run: pytest -q
