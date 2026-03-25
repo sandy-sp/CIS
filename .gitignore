@@ -4,6 +4,12 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .playwright-mcp/
+.DS_Store
+.env
+.env.local
+.venv/
+.idea/
+.vscode/
 
 data/raw/
 data/clean/

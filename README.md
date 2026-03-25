@@ -1,29 +1,50 @@
-# Company Intelligence Scraper
+# CIS
 
-Internal scrape-first tool for collecting public first-party company website data, saving a clean JSON corpus, and exporting a structured Excel workbook.
+Company Intelligence Scraper is a lightweight scrape-first workspace for collecting public company website data, saving a clean JSON corpus, exporting a business-focused Excel workbook, and optionally building a local RAG experience on top of completed scrape jobs.
 
-## Current Workflow
+## What It Does
+
+- discovers a company site from `llm.txt`, `robots.txt`, sitemaps, and internal links
+- crawls the site with a simple two-engine path:
+  - static HTML extraction
+  - browser extraction via Crawl4AI when needed
+- saves canonical page records as JSON
+- cleans and classifies pages into business-relevant groups
+- exports:
+  - job ZIP bundle
+  - clean corpus JSONL
+  - extracted entities JSON
+  - Excel workbook with:
+    - `Summary`
+    - `Services`
+    - `Case Studies`
+    - `Partners`
+    - `Customers`
+    - `People`
+    - `Events`
+    - `Page Inventory`
+- optionally builds a Qdrant search index from completed scrape jobs
+- optionally runs local RAG chat with bundled Ollama
+
+## Product Flow
 
 1. `Scrape`
    - enter a company URL
-   - preview site discovery from `llm.txt`, `robots.txt`, sitemap, and root
-   - start a crawl job
-   - watch discovered, scraped, skipped, and denied/failed counts
+   - preview discovery and page counts
+   - run a crawl job
+   - watch live scraped, skipped, denied, and failed counts
 2. `Jobs`
-   - inspect saved crawl jobs
-   - download the full job ZIP
-   - download the Excel export
-   - download the saved corpus JSONL and extracted entities JSON
+   - inspect completed jobs
+   - download the ZIP, Excel export, entity JSON, or corpus JSONL
+   - resume interrupted jobs
 3. `Settings`
-   - use bundled Ollama by default for chat and embeddings
-   - optionally override with your own OpenAI or Anthropic keys
+   - use bundled Ollama defaults or override with your own provider settings
 4. `Index`
-   - build a Qdrant search index from a completed scrape job
-   - embeddings are created from the saved JSON corpus fields, not standalone Markdown files
+   - build a vector index from a completed scrape job
 5. `Chat`
-   - ask grounded questions against an indexed crawl corpus
+   - ask grounded questions against the indexed corpus and extracted entities
 
-## Output
+## Storage Model
 
 Each completed job is written under `data/jobs/<job_id>/` and includes:
 
@@ -35,37 +56,69 @@ Each completed job is written under `data/jobs/<job_id>/` and includes:
 - `exports/entities.json`
 - `exports/corpus.jsonl`
 
-Only JSON artifacts are persisted for page content. Markdown is not saved as separate `.md` files. If a scraper engine produces markdown-like text, it is kept only inside the JSON record as an intermediate field; the RAG index now prefers `clean_text` and `raw_text` from the saved JSON corpus.
+JSON is the source of truth. Standalone Markdown page files are not persisted.
 
-## Excel Sheets
+## Quick Start
 
-The Excel export focuses on the business deliverable:
-
-- `Summary`
-- `Services`
-- `Case Studies`
-- `Partners`
-- `Customers`
-- `People`
-- `Events`
-- `Page Inventory`
-
-## Docker
-
-The default Docker stack now starts:
-
-- the Streamlit app
-- `ollama` with `qwen3:4b-instruct`
-- `nomic-embed-text`
-- `qdrant`
+### Docker
 
 ```bash
 docker compose up --build
 ```
 
-The app will be available at `http://localhost:8501`.
+Then open `http://localhost:8501`.
 
-## Notes
+The default stack starts:
 
-- `benchmarks/` is internal extractor QA tooling and is not part of the scrape workflow.
-- Scrape/export is still the primary workflow. RAG is a separate post-scrape phase built only from completed saved jobs.
+- the Streamlit app
+- `ollama`
+- `qdrant`
+- a one-time Ollama bootstrap step that pulls:
+  - `qwen3:4b-instruct`
+  - `nomic-embed-text`
+
+### Local Python
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Configuration
+
+Environment variables can override runtime defaults. See [.env.example](.env.example).
+
+Common settings:
+
+- `OLLAMA_URL`
+- `QDRANT_URL`
+- `APP_TIMEZONE`
+- `APP_DEFAULT_LLM_BACKEND`
+- `APP_DEFAULT_EMBEDDING_BACKEND`
+- `APP_DEFAULT_OLLAMA_LLM_MODEL`
+- `APP_DEFAULT_OLLAMA_EMBEDDING_MODEL`
+
+## Open Source Notes
+
+- This project is intended for public company websites and publicly available content.
+- `benchmarks/` is optional internal QA tooling for extractor tuning. It is not required for normal scraping.
+- Local runtime files under `data/` are ignored by git.
+- Docker and app defaults are chosen for a self-contained local workflow first.
+
+## Development
+
+```bash
+pytest -q
+```
+
+Focused test runs are often faster while iterating on a specific area:
+
+```bash
+pytest -q tests/test_chat_page_helpers.py tests/test_generator.py
+```
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

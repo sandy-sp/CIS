@@ -1,6 +1,6 @@
 services:
   app:
-    image: b_s-app
+    image: cis-app
     build: .
     restart: unless-stopped
     environment:
@@ -37,7 +37,7 @@ services:
       start_period: 20s
 
   ollama-init:
-    image: b_s-app
+    image: cis-app
     environment:
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_BOOTSTRAP_MODELS=nomic-embed-text,qwen3:4b-instruct
