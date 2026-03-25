@@ -159,13 +159,24 @@ def _clean_title(title: str, domain: str = "") -> str:
     return name
 
 
+def _safe_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _join_text(parts: list[str | None], *, separator: str = " ") -> str:
+    normalized = [_safe_text(part).strip() for part in parts]
+    return separator.join(part for part in normalized if part)
+
+
 def _first_paragraph(record: PageRecord) -> str:
     if record.description:
         return record.description.strip()
-    text = (record.clean_text or "").strip()
+    text = _safe_text(record.clean_text).strip()
     if not text:
         return ""
-    chunks = [chunk.strip() for chunk in re.split(r"\n{2,}", record.markdown) if chunk.strip()]
+    chunks = [chunk.strip() for chunk in re.split(r"\n{2,}", _safe_text(record.markdown)) if chunk.strip()]
     if chunks:
         chunk = re.sub(r"^[#>\-\*\+\d\.\s]+", "", chunks[0]).strip()
         return re.sub(r"\s+", " ", chunk)[:280]
@@ -290,7 +301,7 @@ class UniversalExtractor:
             if not self._is_partner_listing_page(record):
                 continue
             current_heading = ""
-            for line in record.markdown.splitlines():
+            for line in _safe_text(record.markdown).splitlines():
                 stripped = line.strip()
                 heading = self._heading_value(stripped)
                 if heading:
@@ -317,7 +328,7 @@ class UniversalExtractor:
         for record in records:
             if not self._is_people_record(record):
                 continue
-            markdown_lines = [line.strip() for line in record.markdown.splitlines() if line.strip()]
+            markdown_lines = [line.strip() for line in _safe_text(record.markdown).splitlines() if line.strip()]
 
             for line in markdown_lines:
                 parsed = self._parse_person_heading(line)
@@ -353,7 +364,7 @@ class UniversalExtractor:
                 )
                 _add_entity(bucket, entity)
 
-            for match in _MD_LINK.finditer(record.markdown):
+            for match in _MD_LINK.finditer(_safe_text(record.markdown)):
                 link_text = match.group(1).strip()
                 url = match.group(2).strip()
                 name = self._guess_person_name(link_text, url)
@@ -373,7 +384,7 @@ class UniversalExtractor:
                 )
                 _add_entity(bucket, entity)
 
-            for match in _LINKEDIN_PROFILE.finditer(record.markdown):
+            for match in _LINKEDIN_PROFILE.finditer(_safe_text(record.markdown)):
                 url = match.group(0)
                 name = self._slug_to_name(match.group(1))
                 if not name:
@@ -427,7 +438,15 @@ class UniversalExtractor:
         for record in records:
             if record.page_category != "case-studies" or record.is_duplicate:
                 continue
-            search_text = "\n".join([record.title, record.description, record.clean_text[:1200], record.markdown[:1200]])
+            search_text = _join_text(
+                [
+                    record.title,
+                    record.description,
+                    _safe_text(record.clean_text)[:1200],
+                    _safe_text(record.markdown)[:1200],
+                ],
+                separator="\n",
+            )
             for line in [line.strip() for line in search_text.splitlines() if line.strip()]:
                 explicit = re.match(
                     r"^(?:customer|client|company|organization)\s*[:\-]\s*([A-Z][A-Za-z0-9&.,'/-]+(?:\s+[A-Z][A-Za-z0-9&.,'/-]+){0,5})$",
@@ -464,7 +483,11 @@ class UniversalExtractor:
             _add_entity(bucket, entity)
 
     def _extract_date(self, record: PageRecord) -> str:
-        search_text = " ".join([record.title, record.description, record.clean_text[:1200]])
+        search_text = _join_text([
+            record.title,
+            record.description,
+            _safe_text(record.clean_text)[:1200],
+        ])
         match = _MONTH_DATE.search(search_text)
         if match:
             return match.group(0)
@@ -475,7 +498,11 @@ class UniversalExtractor:
         return year.group(1) if year else ""
 
     def _extract_location(self, record: PageRecord) -> str:
-        search_text = " ".join([record.title, record.description, record.clean_text[:800]])
+        search_text = _join_text([
+            record.title,
+            record.description,
+            _safe_text(record.clean_text)[:800],
+        ])
         match = _LOCATION_HINTS.search(search_text)
         return match.group(1) if match else ""
 
@@ -569,7 +596,7 @@ class UniversalExtractor:
         return name, title
 
     def _clean_markdown_text(self, value: str) -> str:
-        value = value.strip().lstrip("#").strip()
+        value = _safe_text(value).strip().lstrip("#").strip()
         text, _ = self._strip_markdown_link(value)
         return " ".join(text.split())
 
@@ -578,7 +605,7 @@ class UniversalExtractor:
             return False
         bullet_count = sum(
             1
-            for line in record.markdown.splitlines()
+            for line in _safe_text(record.markdown).splitlines()
             if line.strip().startswith(("* ", "- ", "+ "))
         )
         return bullet_count >= 1 and bool(_PARTNER_PATH_HINT.search(record.path or ""))
@@ -667,7 +694,7 @@ class UniversalExtractor:
         return bool(_SERVICE_ENTITY_HINT.search(title))
 
     def _extract_event_listing(self, record: PageRecord, bucket: dict[str, ExtractedEntity]) -> None:
-        lines = [line.strip() for line in record.markdown.splitlines() if line.strip()]
+        lines = [line.strip() for line in _safe_text(record.markdown).splitlines() if line.strip()]
         for line in lines:
             heading = self._heading_value(line)
             if not heading:

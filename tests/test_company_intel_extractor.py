@@ -261,6 +261,27 @@ def test_universal_extractor_parses_meet_the_expert_headings():
     assert entities["people"][0].attributes["title"] == "Associate Director, Decentralized Clinical Trial Management"
 
 
+def test_universal_extractor_handles_nullable_text_fields():
+    record = PageRecord(
+        url="https://example.com/blogs/launch",
+        normalized_url="https://example.com/blogs/launch",
+        domain="example.com",
+        path="/blogs/launch",
+        title="Launch Update",
+        description=None,
+        markdown="# Launch Update\n\nMarch 24, 2026 launch announcement.",
+        clean_text="March 24, 2026 launch announcement.",
+        page_category="resources",
+        status="success",
+        word_count=5,
+    )
+
+    entities = UniversalExtractor().extract([record], "example.com")
+
+    assert [entity.display_name for entity in entities["resources"]] == ["Launch Update"]
+    assert entities["resources"][0].attributes["date"] == "March 24, 2026"
+
+
 def test_universal_extractor_filters_non_primary_language_records():
     records = [
         PageRecord(

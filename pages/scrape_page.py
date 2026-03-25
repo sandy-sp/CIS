@@ -162,7 +162,7 @@ def _render_live_log(job_id: str) -> None:
             "Time": str(row.get("timestamp", "")).replace("T", " ")[:19],
             "Status": row.get("status", row.get("level", "")),
             "Engine": row.get("engine", ""),
-            "Words": row.get("words", ""),
+            "Words": int(row.get("words") or 0),
             "URL": row.get("url", row.get("message", "")),
             "Reason": row.get("reason", ""),
         })
