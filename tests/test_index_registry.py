@@ -55,3 +55,24 @@ def test_registry_removes_target(tmp_path):
     registry.remove_target("job:abc:full")
 
     assert registry.list_targets() == []
+
+
+def test_registry_remove_targets_removes_multiple_entries(tmp_path):
+    registry = IndexRegistry(path=tmp_path / "index_registry.json")
+    registry.save_target({
+        "target_id": "job:abc:full",
+        "label": "example.com",
+        "collection_name": "company-intel-example",
+        "source_kind": "company_job",
+    })
+    registry.save_target({
+        "target_id": "job:def:internal",
+        "label": "acme.com",
+        "collection_name": "company-intel-acme",
+        "source_kind": "company_job",
+    })
+
+    removed = registry.remove_targets(["job:abc:full", "job:def:internal"])
+
+    assert removed == 2
+    assert registry.list_targets() == []

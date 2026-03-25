@@ -54,12 +54,22 @@ class IndexRegistry:
         return target_copy
 
     def remove_target(self, target_id: str) -> None:
+        self.remove_targets([target_id])
+
+    def remove_targets(self, target_ids: list[str]) -> int:
+        target_id_set = {target_id for target_id in target_ids if target_id}
+        if not target_id_set:
+            return 0
         payload = self._read()
+        existing_targets = payload.get("targets", [])
         targets = [
-            item for item in payload.get("targets", [])
-            if item.get("target_id") != target_id
+            item for item in existing_targets
+            if item.get("target_id") not in target_id_set
         ]
-        self._write({"targets": targets})
+        removed = len(existing_targets) - len(targets)
+        if removed:
+            self._write({"targets": targets})
+        return removed
 
     def _read(self) -> dict[str, Any]:
         if not self.path.exists():

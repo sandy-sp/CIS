@@ -6,7 +6,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import streamlit as st
-from qdrant_client import QdrantClient
 
 from activity_log import log_activity
 from app_settings import default_ollama_url, ensure_session_settings
@@ -14,6 +13,12 @@ from chat.generator import Generator
 from chat.retriever import Retriever
 from company_intel.storage import JobStorage
 from indexer.embedder import Embedder
+from indexer.qdrant_status import (
+    STATE_MISSING,
+    STATE_UNAVAILABLE,
+    fetch_qdrant_collections_status,
+    tracked_target_state,
+)
 from indexer.registry import IndexRegistry
 
 
@@ -68,15 +73,6 @@ def _format_timestamp_local(value: str) -> str:
         return value
     local_dt = dt.astimezone(_display_tz())
     return local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
-
-
-def _collection_exists(collection_name: str) -> bool:
-    try:
-        client = QdrantClient(url=QDRANT_URL)
-        names = {item.name for item in client.get_collections().collections}
-    except Exception:
-        return True
-    return collection_name in names
 
 
 def _truncate_for_log(text: str, limit: int = 120) -> str:
@@ -358,7 +354,14 @@ def chat_page() -> None:
     st.session_state.chat_target_id = active_target_id
     active_target = targets_by_id[active_target_id]
     collection_name = active_target["collection_name"]
-    if not _collection_exists(collection_name):
+    qdrant_status = fetch_qdrant_collections_status(QDRANT_URL)
+    collection_state = tracked_target_state(active_target, qdrant_status)
+    if collection_state == STATE_UNAVAILABLE:
+        st.error(f"Qdrant is unavailable at `{QDRANT_URL}`. Chat requires Qdrant to load indexed corpora.")
+        if qdrant_status.error:
+            st.caption(f"Qdrant error: {qdrant_status.error}")
+        return
+    if collection_state == STATE_MISSING:
         st.error(
             "The selected index is tracked in the registry, but the Qdrant collection is missing. "
             "Rebuild the search index from the Index page."
