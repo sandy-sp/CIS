@@ -22,7 +22,8 @@ class VectorStore:
     """Qdrant-backed vector store for RAG chunks."""
 
     def __init__(self, collection_name: str, dimensions: int,
-                 url: Optional[str] = None, in_memory: bool = False):
+                 url: Optional[str] = None, in_memory: bool = False,
+                 ensure_collection: bool = True):
         """
         Args:
             collection_name: Qdrant collection name (e.g. domain slug)
@@ -39,7 +40,8 @@ class VectorStore:
         else:
             self._client = QdrantClient(url=url or "http://localhost:6333")
 
-        self._ensure_collection()
+        if ensure_collection:
+            self._ensure_collection()
 
     def _ensure_collection(self) -> None:
         """Create collection if it doesn't exist."""

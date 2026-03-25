@@ -1,8 +1,12 @@
 # pages/chat_page.py
 """Ask questions against indexed company-intel collections."""
+import json
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import streamlit as st
+from qdrant_client import QdrantClient
 
 from activity_log import log_activity
 from app_settings import default_ollama_url, ensure_session_settings
@@ -16,6 +20,7 @@ from indexer.registry import IndexRegistry
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 _STORAGE = JobStorage()
 _REGISTRY = IndexRegistry()
+_DISPLAY_TIMEZONE = os.environ.get("APP_TIMEZONE") or os.environ.get("TZ") or "America/New_York"
 _ENTITY_QUERY_MAP = [
     (("employee", "employees", "people", "team", "staff", "linkedin", "leadership"), ("people",)),
     (("service", "services", "solution", "solutions", "offering", "offerings", "capability", "capabilities"), ("services",)),
@@ -33,6 +38,45 @@ _ENTITY_LIMITS = {
     "events": 10,
     "case_studies": 10,
 }
+
+_UNKNOWN_PATTERNS = (
+    "i don't know",
+    "i do not know",
+    "no scraped content",
+    "no information to extract",
+    "no information available",
+    "not enough information",
+    "cannot answer based on the scraped content",
+)
+
+
+def _display_tz() -> ZoneInfo:
+    try:
+        return ZoneInfo(_DISPLAY_TIMEZONE)
+    except Exception:
+        return ZoneInfo("UTC")
+
+
+def _format_timestamp_local(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        return value
+    local_dt = dt.astimezone(_display_tz())
+    return local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _collection_exists(collection_name: str) -> bool:
+    try:
+        client = QdrantClient(url=QDRANT_URL)
+        names = {item.name for item in client.get_collections().collections}
+    except Exception:
+        return True
+    return collection_name in names
 
 
 def _truncate_for_log(text: str, limit: int = 120) -> str:
@@ -78,6 +122,20 @@ def _entity_bucket_order(question: str) -> list[str]:
     return ordered
 
 
+def _is_entity_focused_question(question: str) -> bool:
+    lowered = question.lower()
+    if "list" in lowered:
+        return True
+    return any(keyword in lowered for keywords, _ in _ENTITY_QUERY_MAP for keyword in keywords)
+
+
+def _looks_like_unknown_answer(answer: str) -> bool:
+    lowered = (answer or "").strip().lower()
+    if not lowered:
+        return True
+    return any(pattern in lowered for pattern in _UNKNOWN_PATTERNS)
+
+
 def _entity_to_source(bucket: str, entity) -> dict:
     lines = [f"{bucket.replace('_', ' ').title()}: {entity.display_name}"]
     for key, value in sorted(entity.attributes.items()):
@@ -115,6 +173,94 @@ def _entity_sources_for_question(job_id: str, question: str) -> list[dict]:
             seen.add(key)
             sources.append(_entity_to_source(bucket, entity))
     return sources
+
+
+def _entity_bucket_alias(entity_type: str) -> str:
+    normalized = (entity_type or "").strip().lower().replace(" ", "_")
+    aliases = {
+        "company": "company_profile",
+        "company_profile": "company_profile",
+        "services": "services",
+        "service": "services",
+        "people": "people",
+        "person": "people",
+        "employees": "people",
+        "employee": "people",
+        "partners": "partners",
+        "partner": "partners",
+        "customers": "customers",
+        "customer": "customers",
+        "events": "events",
+        "event": "events",
+        "case_studies": "case_studies",
+        "case_study": "case_studies",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _structured_answer_from_entities(job_id: str, question: str) -> str:
+    entities = _STORAGE.load_entities(job_id)
+    if not entities:
+        return ""
+
+    buckets = _entity_bucket_order(question)
+    lines: list[str] = []
+
+    company = entities.get("company_profile", [])
+    if company:
+        profile = company[0]
+        summary = _normalize_entity_value(profile.attributes.get("summary"))
+        if summary:
+            source = profile.source_urls[0] if profile.source_urls else ""
+            lines.append(f"**{profile.display_name}**: {summary}" + (f" [Source]({source})" if source else ""))
+
+    if "people" in buckets and entities.get("people"):
+        lines.append("People found:")
+        for person in entities["people"][: _ENTITY_LIMITS["people"]]:
+            title = _normalize_entity_value(person.attributes.get("title")) or "Title not found"
+            linkedin = _normalize_entity_value(person.attributes.get("linkedin_url")) or "LinkedIn URL not found in extracted content"
+            source = person.source_urls[0] if person.source_urls else ""
+            lines.append(
+                f"- {person.display_name} — {title}. LinkedIn: {linkedin}"
+                + (f" [Source]({source})" if source else "")
+            )
+
+    if "services" in buckets and entities.get("services"):
+        lines.append("Services found:")
+        for service in entities["services"][: _ENTITY_LIMITS["services"]]:
+            source = service.source_urls[0] if service.source_urls else ""
+            lines.append(f"- {service.display_name}" + (f" [Source]({source})" if source else ""))
+
+    if "partners" in buckets and entities.get("partners"):
+        lines.append("Partners found:")
+        for partner in entities["partners"][: _ENTITY_LIMITS["partners"]]:
+            source = partner.source_urls[0] if partner.source_urls else ""
+            lines.append(f"- {partner.display_name}" + (f" [Source]({source})" if source else ""))
+
+    if "events" in buckets and entities.get("events"):
+        lines.append("Events found:")
+        for event in entities["events"][: _ENTITY_LIMITS["events"]]:
+            date = _normalize_entity_value(event.attributes.get("date"))
+            location = _normalize_entity_value(event.attributes.get("location"))
+            source = event.source_urls[0] if event.source_urls else ""
+            details = " | ".join(filter(None, [date, location]))
+            lines.append(
+                f"- {event.display_name}" + (f" ({details})" if details else "") + (f" [Source]({source})" if source else "")
+            )
+
+    if "customers" in buckets and entities.get("customers"):
+        lines.append("Customers found:")
+        for customer in entities["customers"][: _ENTITY_LIMITS["customers"]]:
+            source = customer.source_urls[0] if customer.source_urls else ""
+            lines.append(f"- {customer.display_name}" + (f" [Source]({source})" if source else ""))
+
+    if "case_studies" in buckets and entities.get("case_studies"):
+        lines.append("Case studies found:")
+        for case_study in entities["case_studies"][: _ENTITY_LIMITS["case_studies"]]:
+            source = case_study.source_urls[0] if case_study.source_urls else ""
+            lines.append(f"- {case_study.display_name}" + (f" [Source]({source})" if source else ""))
+
+    return "\n".join(lines).strip()
 
 
 def _is_generation_error(answer: str) -> bool:
@@ -162,22 +308,14 @@ def _ensure_chat_state() -> None:
 
 def _sync_registry_targets() -> None:
     registry_targets = _REGISTRY.list_targets()
-    merged = {
-        item["target_id"]: item
-        for item in st.session_state.get("indexed_targets", [])
-        if item.get("target_id")
-    }
-    for item in registry_targets:
-        merged[item["target_id"]] = item
-    if merged:
-        ordered = sorted(
-            merged.values(),
-            key=lambda item: item.get("indexed_at", ""),
-            reverse=True,
-        )
-        st.session_state.indexed_targets = ordered
-        if not st.session_state.get("active_rag_target_id"):
-            st.session_state.active_rag_target_id = ordered[0]["target_id"]
+    st.session_state.indexed_targets = list(registry_targets)
+    target_ids = {item.get("target_id", "") for item in registry_targets}
+    active_target = st.session_state.get("active_rag_target_id", "")
+    chat_target = st.session_state.get("chat_target_id", "")
+    if active_target not in target_ids:
+        st.session_state.active_rag_target_id = registry_targets[0]["target_id"] if registry_targets else ""
+    if chat_target not in target_ids:
+        st.session_state.chat_target_id = ""
 
 
 def chat_page() -> None:
@@ -220,11 +358,17 @@ def chat_page() -> None:
     st.session_state.chat_target_id = active_target_id
     active_target = targets_by_id[active_target_id]
     collection_name = active_target["collection_name"]
+    if not _collection_exists(collection_name):
+        st.error(
+            "The selected index is tracked in the registry, but the Qdrant collection is missing. "
+            "Rebuild the search index from the Index page."
+        )
+        return
     retrieval = _retrieval_settings(active_target, settings)
     st.caption(f"Collection: `{collection_name}`")
     indexed_at = active_target.get("indexed_at", "")
     if indexed_at:
-        st.caption(f"Indexed: `{indexed_at[:19].replace('T', ' ')}`")
+        st.caption(f"Indexed: `{_format_timestamp_local(indexed_at)}`")
     st.info(
         "Retrieval uses the embedding model that built this index. "
         "Answer generation uses your current chat model from Settings."
@@ -326,7 +470,7 @@ def chat_page() -> None:
                         active_target.get("job_id", ""),
                         question,
                     )
-                    combined_sources = entity_sources + [
+                    vector_sources = [
                         {
                             "url": c.url,
                             "title": c.title,
@@ -337,12 +481,78 @@ def chat_page() -> None:
                         for c in chunks
                     ]
                     if entity_sources:
+                        vector_sources = vector_sources[:2]
+                    combined_sources = entity_sources + vector_sources
+                    if entity_sources:
                         log_activity(
                             st.session_state,
                             "chat",
                             f"Loaded {len(entity_sources)} structured entity sources for `{collection_name}`",
                             details=_chunk_log_summary(entity_sources),
                         )
+
+                    entities = _STORAGE.load_entities(active_target.get("job_id", ""))
+                    structured_answer = _structured_answer_from_entities(
+                        active_target.get("job_id", ""),
+                        question,
+                    )
+                    if structured_answer and (_is_entity_focused_question(question) or not chunks):
+                        st.markdown(structured_answer)
+                        st.session_state.chat_history.append({"role": "assistant", "content": structured_answer})
+                        st.session_state.last_sources = combined_sources
+                        log_activity(
+                            st.session_state,
+                            "chat",
+                            f"Answered from structured entities for `{collection_name}`",
+                            level="success",
+                            details=(
+                                f"Structured sources: {len(entity_sources)} | "
+                                f"Vector hits: {len(chunks)} | "
+                                f"Question: {_truncate_for_log(question)}"
+                            ),
+                        )
+                        return
+
+                    def search_company_corpus(query: str, limit: int = 5) -> str:
+                        """
+                        Search the indexed company vector database for relevant scraped content.
+
+                        Args:
+                            query: Search query describing the information needed.
+                            limit: Maximum number of matching passages to return.
+                        """
+                        tool_chunks = retriever.retrieve(query)
+                        rows = [
+                            {
+                                "title": chunk.title,
+                                "url": chunk.url,
+                                "page_type": chunk.page_type,
+                                "text": chunk.text,
+                            }
+                            for chunk in tool_chunks[: max(1, min(limit, 5))]
+                        ]
+                        return json.dumps(rows, indent=2)
+
+                    def lookup_company_entities(entity_type: str = "company_profile", limit: int = 10) -> str:
+                        """
+                        Inspect structured entities extracted from the scraped company site.
+
+                        Args:
+                            entity_type: One of company_profile, services, case_studies, partners, customers, people, or events.
+                            limit: Maximum number of entities to return.
+                        """
+                        bucket = _entity_bucket_alias(entity_type)
+                        values = entities.get(bucket, [])
+                        rows = [
+                            {
+                                "display_name": entity.display_name,
+                                "attributes": entity.attributes,
+                                "source_urls": entity.source_urls,
+                                "evidence_snippets": entity.evidence_snippets[:2],
+                            }
+                            for entity in values[: max(1, min(limit, 15))]
+                        ]
+                        return json.dumps(rows, indent=2)
 
                     # Generate answer
                     gen_kwargs = {"backend": backend, "ollama_url": ollama_url}
@@ -354,8 +564,14 @@ def chat_page() -> None:
                     answer = generator.generate(
                         question=question,
                         context_chunks=combined_sources,
-                        history=st.session_state.chat_history[-10:],
+                        history=st.session_state.chat_history[:-1][-10:],
+                        tools={
+                            "search_company_corpus": search_company_corpus,
+                            "lookup_company_entities": lookup_company_entities,
+                        } if backend == "ollama" else None,
                     )
+                    if _looks_like_unknown_answer(answer) and structured_answer:
+                        answer = structured_answer
 
                     if _is_generation_error(answer):
                         st.error(answer)

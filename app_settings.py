@@ -26,7 +26,7 @@ def default_ollama_url() -> str:
 
 def llm_model_defaults() -> dict[str, str]:
     return {
-        "ollama": os.environ.get("APP_DEFAULT_OLLAMA_LLM_MODEL", "llama3.2:3b"),
+        "ollama": os.environ.get("APP_DEFAULT_OLLAMA_LLM_MODEL", "qwen3:4b-instruct"),
         "openai": os.environ.get("APP_DEFAULT_OPENAI_LLM_MODEL", "gpt-4o-mini"),
         "anthropic": os.environ.get("APP_DEFAULT_ANTHROPIC_LLM_MODEL", "claude-haiku-4-5"),
     }

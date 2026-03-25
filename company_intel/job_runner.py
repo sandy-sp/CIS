@@ -214,7 +214,7 @@ class JobRunner:
         record = PageRecord(
             url=result.url,
             normalized_url=self._normalize_url(result.url),
-            domain=parsed.netloc.lstrip("www."),
+            domain=parsed.netloc.lower().removeprefix("www."),
             path=parsed.path or "/",
             source_type="internal",
             discovered_via="crawl",
@@ -287,7 +287,7 @@ class JobRunner:
                 continue
             absolute = urldefrag(urljoin(record.url, href)).url
             parsed = urlparse(absolute)
-            domain = parsed.netloc.lstrip("www.").lower()
+            domain = parsed.netloc.lower().removeprefix("www.")
             if parsed.scheme in {"http", "https"} and domain == job.domain.lower():
                 links.append(absolute)
         return links

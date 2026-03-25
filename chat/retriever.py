@@ -37,6 +37,7 @@ class Retriever:
             dimensions=embedder.dimensions,
             url=qdrant_url,
             in_memory=in_memory,
+            ensure_collection=in_memory,
         )
         self._reranker = None
 

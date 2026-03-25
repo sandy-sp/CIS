@@ -6,7 +6,9 @@ from pages.chat_page import (
     _chunk_log_summary,
     _entity_bucket_order,
     _entity_sources_for_question,
+    _is_entity_focused_question,
     _is_generation_error,
+    _looks_like_unknown_answer,
     _retrieval_settings,
     _truncate_for_log,
 )
@@ -80,7 +82,7 @@ def test_retrieval_settings_prefers_index_metadata():
 
 
 def test_backend_display_label_formats_supported_backends():
-    assert _backend_display_label("ollama", "llama3.2:3b", "http://ollama:11434") == "Bundled Ollama | llama3.2:3b"
+    assert _backend_display_label("ollama", "qwen3:4b-instruct", "http://ollama:11434") == "Bundled Ollama | qwen3:4b-instruct"
     assert _backend_display_label("openai", "gpt-4o-mini") == "OpenAI API | gpt-4o-mini"
     assert _backend_display_label("local", "BAAI/bge-m3") == "Local model | BAAI/bge-m3"
 
@@ -90,6 +92,17 @@ def test_entity_bucket_order_prioritizes_people_questions():
 
     assert buckets[0] == "company_profile"
     assert "people" in buckets
+
+
+def test_is_entity_focused_question_detects_list_queries():
+    assert _is_entity_focused_question("List the employee names and LinkedIn URLs.") is True
+    assert _is_entity_focused_question("Tell me about the company mission.") is False
+
+
+def test_looks_like_unknown_answer_detects_variants():
+    assert _looks_like_unknown_answer("I don't know based on the scraped content.") is True
+    assert _looks_like_unknown_answer("Unfortunately, I have no information to extract.") is True
+    assert _looks_like_unknown_answer("Here are the people I found.") is False
 
 
 def test_entity_sources_for_question_uses_saved_entities(tmp_path, monkeypatch):

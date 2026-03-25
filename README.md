@@ -55,7 +55,7 @@ The Excel export focuses on the business deliverable:
 The default Docker stack now starts:
 
 - the Streamlit app
-- `ollama` with `llama3.2:3b`
+- `ollama` with `qwen3:4b-instruct`
 - `nomic-embed-text`
 - `qdrant`
 

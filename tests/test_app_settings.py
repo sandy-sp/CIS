@@ -66,12 +66,12 @@ def test_default_settings_respects_env(monkeypatch):
     monkeypatch.setenv("OLLAMA_URL", "http://ollama:11434")
     monkeypatch.setenv("APP_DEFAULT_LLM_BACKEND", "ollama")
     monkeypatch.setenv("APP_DEFAULT_EMBEDDING_BACKEND", "ollama")
-    monkeypatch.setenv("APP_DEFAULT_OLLAMA_LLM_MODEL", "llama3.2:3b")
+    monkeypatch.setenv("APP_DEFAULT_OLLAMA_LLM_MODEL", "qwen3:4b-instruct")
     monkeypatch.setenv("APP_DEFAULT_OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
     settings = default_settings()
 
     assert settings["ollama_url"] == "http://ollama:11434"
-    assert settings["llm_model"] == "llama3.2:3b"
+    assert settings["llm_model"] == "qwen3:4b-instruct"
     assert settings["embedding_model"] == "nomic-embed-text"
     assert settings["embedding_backend"] == "ollama"

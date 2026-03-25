@@ -1,8 +1,11 @@
 # pages/index_page.py
 """Index completed company-intel jobs into Qdrant."""
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import streamlit as st
+from qdrant_client import QdrantClient
 
 from activity_log import log_activity
 from app_settings import default_ollama_url, embedding_model_defaults, ensure_session_settings
@@ -15,6 +18,7 @@ from indexer.registry import IndexRegistry
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 _STORAGE = JobStorage()
 _REGISTRY = IndexRegistry()
+_DISPLAY_TIMEZONE = os.environ.get("APP_TIMEZONE") or os.environ.get("TZ") or "America/New_York"
 _EMBEDDING_BACKEND_OPTIONS = ["ollama", "openai", "local"]
 _EMBEDDING_BACKEND_LABELS = {
     "ollama": "Bundled Ollama",
@@ -26,6 +30,33 @@ _DEFAULT_EMBEDDING_MODELS = {
     "openai": embedding_model_defaults()["openai"],
     "local": embedding_model_defaults()["local"],
 }
+
+
+def _display_tz() -> ZoneInfo:
+    try:
+        return ZoneInfo(_DISPLAY_TIMEZONE)
+    except Exception:
+        return ZoneInfo("UTC")
+
+
+def _format_timestamp_local(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        return value
+    return dt.astimezone(_display_tz()).strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _qdrant_collection_names() -> set[str] | None:
+    try:
+        client = QdrantClient(url=QDRANT_URL)
+        return {item.name for item in client.get_collections().collections}
+    except Exception:
+        return None
 
 
 def _summarize_indexable_pages(job_id: str, include_external: bool) -> dict:
@@ -58,7 +89,11 @@ def _ensure_index_state() -> None:
     _sync_registry_targets()
 
 
-def _job_index_status_rows(completed_jobs: list, indexed_targets: list[dict]) -> list[dict]:
+def _job_index_status_rows(
+    completed_jobs: list,
+    indexed_targets: list[dict],
+    collection_names: set[str] | None,
+) -> list[dict]:
     indexed_lookup = {
         (item.get("job_id", ""), bool(item.get("include_external", True))): item
         for item in indexed_targets
@@ -68,6 +103,16 @@ def _job_index_status_rows(completed_jobs: list, indexed_targets: list[dict]) ->
     for job in completed_jobs:
         internal = indexed_lookup.get((job.job_id, False))
         full = indexed_lookup.get((job.job_id, True))
+        internal_status = "Not indexed"
+        if internal:
+            internal_status = (
+                "Indexed" if collection_names is None or internal.get("collection_name") in collection_names else "Missing in Qdrant"
+            )
+        full_status = "Not indexed"
+        if full:
+            full_status = (
+                "Indexed" if collection_names is None or full.get("collection_name") in collection_names else "Missing in Qdrant"
+            )
         latest = max(
             [value.get("indexed_at", "") for value in (internal, full) if value],
             default="",
@@ -76,9 +121,9 @@ def _job_index_status_rows(completed_jobs: list, indexed_targets: list[dict]) ->
             "Domain": job.domain,
             "Job ID": job.job_id,
             "Pages": job.pages_scraped,
-            "Internal Only": "Indexed" if internal else "Not indexed",
-            "Internal + External": "Indexed" if full else "Not indexed",
-            "Last Indexed": latest[:19].replace("T", " ") if latest else "",
+            "Internal Only": internal_status,
+            "Internal + External": full_status,
+            "Last Indexed": _format_timestamp_local(latest) if latest else "",
         })
     return rows
 
@@ -104,22 +149,11 @@ def _remember_index_target(target: dict) -> None:
 
 def _sync_registry_targets() -> None:
     registry_targets = _REGISTRY.list_targets()
-    merged = {
-        item["target_id"]: item
-        for item in st.session_state.get("indexed_targets", [])
-        if item.get("target_id")
-    }
-    for item in registry_targets:
-        merged[item["target_id"]] = item
-    if merged:
-        ordered = sorted(
-            merged.values(),
-            key=lambda item: item.get("indexed_at", ""),
-            reverse=True,
-        )
-        st.session_state.indexed_targets = ordered
-        if not st.session_state.get("active_rag_target_id"):
-            st.session_state.active_rag_target_id = ordered[0]["target_id"]
+    st.session_state.indexed_targets = list(registry_targets)
+    active_target = st.session_state.get("active_rag_target_id", "")
+    target_ids = {item.get("target_id", "") for item in registry_targets}
+    if active_target not in target_ids:
+        st.session_state.active_rag_target_id = registry_targets[0]["target_id"] if registry_targets else ""
 
 
 def index_page() -> None:
@@ -133,16 +167,19 @@ def index_page() -> None:
     completed_jobs = _STORAGE.list_jobs(status="completed")
     jobs_by_id = {job.job_id: job for job in completed_jobs}
     indexed_targets = st.session_state.get("indexed_targets", [])
+    collection_names = _qdrant_collection_names()
 
     if indexed_targets:
         with st.expander("Existing Indexes", expanded=False):
             preview = []
             for item in indexed_targets[:10]:
+                exists = item.get("collection_name", "") in collection_names if collection_names else True
                 preview.append({
                     "Label": item.get("label", ""),
                     "Collection": item.get("collection_name", ""),
+                    "Status": "Indexed" if exists else "Missing in Qdrant",
                     "Kind": item.get("source_kind", ""),
-                    "Indexed at": item.get("indexed_at", "")[:19].replace("T", " "),
+                    "Indexed at": _format_timestamp_local(item.get("indexed_at", "")),
                 })
             st.dataframe(preview, use_container_width=True, hide_index=True)
 
@@ -152,7 +189,7 @@ def index_page() -> None:
 
     with st.expander("Job Index Status", expanded=True):
         st.dataframe(
-            _job_index_status_rows(completed_jobs, indexed_targets),
+            _job_index_status_rows(completed_jobs, indexed_targets, collection_names),
             use_container_width=True,
             hide_index=True,
         )
@@ -170,7 +207,7 @@ def index_page() -> None:
     st.session_state.selected_job_id = selected_job_id
 
     include_external = st.checkbox(
-        "Include external collected pages",
+        "Include approved external pages",
         value=selected_job.settings.follow_external_sources,
     )
     collection_name = collection_name_for_job(
@@ -193,7 +230,7 @@ def index_page() -> None:
         st.write(category_counts)
     target = {
         "target_id": f"job:{selected_job.job_id}:{'full' if include_external else 'internal'}",
-        "label": f"{selected_job.domain} ({'internal + external' if include_external else 'internal only'})",
+        "label": f"{selected_job.domain} ({'internal + approved external' if include_external else 'internal only'})",
         "collection_name": collection_name,
         "source_kind": "company_job",
         "job_id": selected_job.job_id,
@@ -286,6 +323,11 @@ def index_page() -> None:
             target["job_id"],
             include_external=target["include_external"],
         )
+        if target["target_id"] in {item.get("target_id") for item in indexed_targets}:
+            run_iter = pipeline.replace_job_collection(
+                target["job_id"],
+                include_external=target["include_external"],
+            )
 
         for progress in run_iter:
             if progress.error:

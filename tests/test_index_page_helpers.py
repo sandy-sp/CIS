@@ -18,19 +18,21 @@ def test_job_index_status_rows_marks_internal_and_full_targets():
         {
             "job_id": "job-1",
             "include_external": False,
+            "collection_name": "job-1-internal",
             "indexed_at": "2026-03-25T14:00:00+00:00",
         },
         {
             "job_id": "job-1",
             "include_external": True,
+            "collection_name": "job-1-full",
             "indexed_at": "2026-03-25T14:05:00+00:00",
         },
     ]
 
-    rows = _job_index_status_rows(jobs, indexed_targets)
+    rows = _job_index_status_rows(jobs, indexed_targets, {"job-1-internal", "job-1-full"})
 
     assert rows[0]["Internal Only"] == "Indexed"
     assert rows[0]["Internal + External"] == "Indexed"
-    assert rows[0]["Last Indexed"] == "2026-03-25 14:05:00"
+    assert rows[0]["Last Indexed"] == "2026-03-25 10:05:00 EDT"
     assert rows[1]["Internal Only"] == "Not indexed"
     assert rows[1]["Internal + External"] == "Not indexed"

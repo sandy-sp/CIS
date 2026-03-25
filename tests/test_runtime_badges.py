@@ -4,7 +4,7 @@ from runtime_badges import build_runtime_badges
 def test_build_runtime_badges_for_bundled_ollama():
     settings = {
         "llm_backend": "ollama",
-        "llm_model": "llama3.2:3b",
+        "llm_model": "qwen3:4b-instruct",
         "ollama_url": "http://ollama:11434",
         "embedding_backend": "ollama",
         "embedding_model": "nomic-embed-text",
@@ -14,7 +14,7 @@ def test_build_runtime_badges_for_bundled_ollama():
 
     assert badges[0]["value"] == "Hybrid crawler"
     assert badges[1]["value"] == "Bundled Ollama | nomic-embed-text"
-    assert badges[2]["value"] == "Bundled Ollama | llama3.2:3b"
+    assert badges[2]["value"] == "Bundled Ollama | qwen3:4b-instruct"
 
 
 def test_build_runtime_badges_for_external_apis_with_missing_keys():

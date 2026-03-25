@@ -8,7 +8,7 @@ from chat.generator import Generator
 def test_generator_init_ollama():
     g = Generator(backend="ollama")
     assert g.backend == "ollama"
-    assert g._model == "llama3.2:3b"
+    assert g._model == "qwen3:4b-instruct"
 
 
 def test_generator_init_openai():
@@ -48,7 +48,7 @@ def test_build_context_with_chunks():
 def test_build_context_empty():
     g = Generator(backend="ollama")
     ctx = g._build_context([])
-    assert "No context available" in ctx
+    assert "No direct context available yet" in ctx
 
 
 def test_build_messages_structure():
@@ -96,6 +96,45 @@ def test_generate_ollama_mocked():
     assert result == "Cloud services help businesses."
     mock_ollama.Client.assert_called_once_with(host="http://localhost:11434")
     mock_client.chat.assert_called_once()
+    assert mock_client.chat.call_args.kwargs["options"]["num_ctx"] == 2048
+
+
+def test_generate_ollama_with_tools_executes_tool_calls():
+    mock_ollama = MagicMock()
+    mock_client = MagicMock()
+    mock_client.chat.side_effect = [
+        {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "function": {
+                            "name": "search_company_corpus",
+                            "arguments": {"query": "team page", "limit": 2},
+                        }
+                    }
+                ],
+            }
+        },
+        {"message": {"content": "Found the people information."}},
+    ]
+    mock_ollama.Client.return_value = mock_client
+
+    def search_company_corpus(query: str, limit: int = 5) -> str:
+        return f"query={query};limit={limit}"
+
+    with patch.dict(sys.modules, {"ollama": mock_ollama}):
+        g = Generator(backend="ollama", ollama_url="http://localhost:11434")
+        result = g.generate(
+            "Who works there?",
+            [],
+            tools={"search_company_corpus": search_company_corpus},
+        )
+
+    assert result == "Found the people information."
+    assert mock_client.chat.call_count == 2
+    for call in mock_client.chat.call_args_list:
+        assert call.kwargs["options"]["num_ctx"] == 2048
 
 
 def test_generate_openai_mocked():
@@ -131,7 +170,7 @@ def test_generate_anthropic_mocked():
 def test_health_check_ollama_uses_model_list():
     mock_ollama = MagicMock()
     mock_client = MagicMock()
-    mock_client.list.return_value = {"models": [{"model": "llama3.2:3b"}]}
+    mock_client.list.return_value = {"models": [{"model": "qwen3:4b-instruct"}]}
     mock_ollama.Client.return_value = mock_client
 
     with patch.dict(sys.modules, {"ollama": mock_ollama}):
@@ -139,7 +178,7 @@ def test_health_check_ollama_uses_model_list():
         result = g.health_check()
 
     assert result["backend"] == "ollama"
-    assert result["model"] == "llama3.2:3b"
+    assert result["model"] == "qwen3:4b-instruct"
     mock_ollama.Client.assert_called_once_with(host="http://localhost:11434")
     mock_client.list.assert_called_once_with()
 

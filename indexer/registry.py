@@ -13,6 +13,13 @@ def _utcnow_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
+def _parse_iso(value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
 class IndexRegistry:
     def __init__(self, path: Path = _DEFAULT_PATH):
         self.path = path
@@ -23,7 +30,7 @@ class IndexRegistry:
         targets = payload.get("targets", [])
         return sorted(
             [target for target in targets if target.get("target_id")],
-            key=lambda item: item.get("indexed_at", ""),
+            key=lambda item: _parse_iso(item.get("indexed_at", "")),
             reverse=True,
         )
 

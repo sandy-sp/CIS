@@ -78,7 +78,7 @@ class JobStorage:
 
     def create_job(self, settings: CrawlSettings) -> CrawlJob:
         parsed = urlparse(settings.start_url)
-        domain = parsed.netloc.lstrip("www.")
+        domain = parsed.netloc.lower().removeprefix("www.")
         timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         job_id = f"{timestamp}-{_slugify(domain)}"
         job = CrawlJob(
@@ -123,7 +123,7 @@ class JobStorage:
         return self.job_dir(job_id) / "pages" / "clean" / _mirror_path(url).with_suffix(".json")
 
     def external_record_path(self, job_id: str, url: str) -> Path:
-        domain = _slugify(urlparse(url).netloc.lstrip("www."))
+        domain = _slugify(urlparse(url).netloc.lower().removeprefix("www."))
         return self.job_dir(job_id) / "externals" / domain / _mirror_path(url).with_suffix(".json")
 
     def crawl_log_path(self, job_id: str) -> Path:

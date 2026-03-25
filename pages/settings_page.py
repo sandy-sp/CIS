@@ -51,8 +51,8 @@ def _render_ollama_status_panel(
     )
     status_key = (ollama_url, local_chat_model, local_embedding_model)
 
-    st.subheader("Ollama Status")
-    st.caption("Checks the local Ollama server and the models used for bundled chat and embeddings.")
+    st.subheader("Bundled Ollama Status")
+    st.caption("Checks the bundled Ollama server and the local models used for Docker chat and embeddings.")
     pull_notice = st.session_state.pop("ollama_pull_notice", "")
     if pull_notice:
         st.success(pull_notice)
@@ -76,8 +76,8 @@ def _render_ollama_status_panel(
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Server", "Reachable" if status.get("reachable") else "Unavailable")
     c2.metric("Installed models", status.get("installed_count", 0))
-    c3.metric("Chat ready", "Yes" if status.get("ready_for_chat") else "No")
-    c4.metric("Indexing ready", "Yes" if status.get("ready_for_indexing") else "No")
+    c3.metric("Bundled chat", "Ready" if status.get("ready_for_chat") else "Missing model")
+    c4.metric("Bundled embeddings", "Ready" if status.get("ready_for_indexing") else "Missing model")
 
     if status.get("error"):
         st.error(f"Ollama check failed: {status['error']}")
@@ -192,7 +192,7 @@ def settings_page() -> None:
     llm_model = st.text_input(
         "LLM Model",
         value=(s.get("llm_model") if saved_llm_backend == backend else "") or default_llm_models[backend],
-        help="Examples: llama3.2:3b, gpt-4o-mini, claude-haiku-4-5",
+        help="Examples: qwen3:4b-instruct, qwen2.5:3b, gpt-4o-mini, claude-haiku-4-5",
     )
 
     ollama_url = st.text_input(

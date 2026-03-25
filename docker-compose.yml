@@ -6,9 +6,10 @@ services:
     environment:
       - OLLAMA_URL=http://ollama:11434
       - QDRANT_URL=http://qdrant:6333
+      - APP_TIMEZONE=America/New_York
       - APP_DEFAULT_LLM_BACKEND=ollama
       - APP_DEFAULT_EMBEDDING_BACKEND=ollama
-      - APP_DEFAULT_OLLAMA_LLM_MODEL=llama3.2:3b
+      - APP_DEFAULT_OLLAMA_LLM_MODEL=qwen3:4b-instruct
       - APP_DEFAULT_OLLAMA_EMBEDDING_MODEL=nomic-embed-text
     ports:
       - "8501:8501"
@@ -39,7 +40,7 @@ services:
     image: b_s-app
     environment:
       - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_BOOTSTRAP_MODELS=nomic-embed-text,llama3.2:3b
+      - OLLAMA_BOOTSTRAP_MODELS=nomic-embed-text,qwen3:4b-instruct
     depends_on:
       ollama:
         condition: service_healthy
