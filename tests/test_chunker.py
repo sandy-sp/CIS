@@ -81,3 +81,14 @@ def test_chunk_each_chunk_within_size_limit(chunker):
     # Allow some tolerance for overlap and boundary adjustments
     for c in result:
         assert len(c.text) <= _CHUNK_SIZE * 1.5
+
+
+def test_chunk_splitter_makes_forward_progress_near_early_boundaries(chunker):
+    sentence = "Intro. " + ("word " * 20)
+    text = sentence * 400
+
+    result = chunker.chunk(text)
+
+    assert result
+    assert len(result) < 1000
+    assert result[-1].chunk_total == len(result)

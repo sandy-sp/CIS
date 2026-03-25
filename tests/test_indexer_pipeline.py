@@ -159,7 +159,8 @@ def test_pipeline_run_job_indexes_company_records(tmp_path, mock_embedder):
     progress_events = list(pipeline.run_job(job.job_id))
 
     assert progress_events
-    assert progress_events[-1].chunks_total == 1
+    assert progress_events[-1].pages_done == 1
+    assert progress_events[-1].chunks_done == 1
     assert pipeline.get_stats()["total_vectors"] == 1
 
 
@@ -244,3 +245,54 @@ def test_record_source_text_prefers_clean_json_text_over_markdown():
     )
 
     assert _record_source_text(record) == "Normalized clean text from saved JSON."
+
+
+def test_pipeline_summarize_job_counts_indexable_pages(tmp_path, mock_embedder):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    job.status = "completed"
+    storage.save_job(job)
+
+    good = PageRecord(
+        url="https://example.com/about",
+        normalized_url="https://example.com/about",
+        domain="example.com",
+        path="/about",
+        title="About Example",
+        clean_text="Example builds regulated data platforms.",
+        page_category="company",
+        source_type="internal",
+        status="success",
+        word_count=5,
+    )
+    dup = PageRecord(
+        url="https://example.com/about-copy",
+        normalized_url="https://example.com/about-copy",
+        domain="example.com",
+        path="/about-copy",
+        title="About Example Copy",
+        clean_text="Duplicate",
+        page_category="company",
+        source_type="internal",
+        status="success",
+        is_duplicate=True,
+        word_count=1,
+    )
+    storage.save_page_record(job.job_id, good)
+    storage.save_page_record(job.job_id, dup)
+
+    db_path = tmp_path / "pipeline.db"
+    from scraper.pipeline_db import PipelineDB
+    db = PipelineDB(db_path=db_path)
+    pipeline = IndexerPipeline(
+        collection_name="job-summary-test",
+        embedder=mock_embedder,
+        in_memory=True,
+        db=db,
+        storage=storage,
+    )
+
+    summary = pipeline.summarize_job(job.job_id, include_external=False)
+
+    assert summary["indexable_pages"] == 1
+    assert summary["category_counts"] == {"company": 1}

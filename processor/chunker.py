@@ -97,6 +97,7 @@ class Chunker:
 
         chunks: list[str] = []
         start = 0
+        min_advance = max(chunk_size - overlap, 1)
         while start < len(text):
             end = start + chunk_size
             if end >= len(text):
@@ -114,8 +115,11 @@ class Chunker:
             chunk = text[start:break_pos].strip()
             if chunk:
                 chunks.append(chunk)
-            start = break_pos - overlap
-            if start < 0:
-                start = 0
+            next_start = break_pos - overlap
+            # Guard against boundary choices near the current start, which can
+            # otherwise cause the splitter to loop forever on some long pages.
+            if next_start <= start:
+                next_start = min(start + min_advance, len(text))
+            start = max(next_start, 0)
 
         return chunks

@@ -51,6 +51,38 @@ def test_job_storage_loads_saved_records(tmp_path):
     assert records[0].url == "https://example.com/about"
 
 
+def test_job_storage_iterates_saved_records(tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    first = PageRecord(
+        url="https://example.com/about",
+        normalized_url="https://example.com/about",
+        domain="example.com",
+        path="/about",
+        title="About",
+        clean_text="About Example",
+        word_count=2,
+    )
+    second = PageRecord(
+        url="https://example.com/services",
+        normalized_url="https://example.com/services",
+        domain="example.com",
+        path="/services",
+        title="Services",
+        clean_text="Services Example",
+        word_count=2,
+    )
+    storage.save_page_record(job.job_id, first)
+    storage.save_page_record(job.job_id, second)
+
+    records = list(storage.iter_page_records(job.job_id))
+
+    assert [record.url for record in records] == [
+        "https://example.com/about",
+        "https://example.com/services",
+    ]
+
+
 def test_job_storage_lists_jobs_by_status(tmp_path):
     storage = JobStorage(base_dir=tmp_path / "jobs")
     completed = storage.create_job(CrawlSettings(start_url="https://example.com"))

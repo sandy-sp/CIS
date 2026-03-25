@@ -1,6 +1,5 @@
 # pages/index_page.py
 """Index completed company-intel jobs into Qdrant."""
-from collections import Counter
 import os
 
 import streamlit as st
@@ -27,6 +26,23 @@ _DEFAULT_EMBEDDING_MODELS = {
     "openai": embedding_model_defaults()["openai"],
     "local": embedding_model_defaults()["local"],
 }
+
+
+def _summarize_indexable_pages(job_id: str, include_external: bool) -> dict:
+    source_type = None if include_external else "internal"
+    category_counts: dict[str, int] = {}
+    indexable_pages = 0
+    for record in _STORAGE.iter_page_records(job_id, source_type=source_type):
+        if not _is_indexable_record(record, include_external=include_external):
+            continue
+        indexable_pages += 1
+        category = record.page_category or "other"
+        category_counts[category] = category_counts.get(category, 0) + 1
+    ordered_counts = dict(sorted(category_counts.items(), key=lambda item: (-item[1], item[0])))
+    return {
+        "indexable_pages": indexable_pages,
+        "category_counts": ordered_counts,
+    }
 
 
 def _ensure_index_state() -> None:
@@ -130,20 +146,19 @@ def index_page() -> None:
         selected_job.domain,
         include_external=include_external,
     )
-    source_type = None if include_external else "internal"
-    records = _STORAGE.load_page_records(selected_job_id, source_type=source_type)
-    chunk_records = [
-        record for record in records
-        if _is_indexable_record(record, include_external=include_external)
-    ]
+    summary = _summarize_indexable_pages(
+        selected_job_id,
+        include_external=include_external,
+    )
+    indexable_pages = summary["indexable_pages"]
+    category_counts = summary["category_counts"]
 
     st.info(
         f"Completed jobs: **{len(completed_jobs)}**. "
-        f"Indexable pages for this job: **{len(chunk_records)}**."
+        f"Indexable pages for this job: **{indexable_pages}**."
     )
-    if chunk_records:
-        counts = Counter(record.page_category for record in chunk_records)
-        st.write(dict(sorted(counts.items(), key=lambda item: (-item[1], item[0]))))
+    if category_counts:
+        st.write(category_counts)
     target = {
         "target_id": f"job:{selected_job.job_id}:{'full' if include_external else 'internal'}",
         "label": f"{selected_job.domain} ({'internal + external' if include_external else 'internal only'})",
@@ -154,7 +169,7 @@ def index_page() -> None:
         "include_external": include_external,
     }
 
-    if not chunk_records:
+    if not indexable_pages:
         st.warning("This job has no indexable pages after cleaning and deduplication.")
         return
 
@@ -252,24 +267,43 @@ def index_page() -> None:
                 )
                 had_error = True
                 break
-            pct = progress.chunks_done / progress.chunks_total if progress.chunks_total else 0
-            progress_bar.progress(pct)
-            status_text.text(f"Indexed {progress.chunks_done}/{progress.chunks_total} chunks")
-            milestone = (int(pct * 100) // 25) * 25
-            if 25 <= milestone < 100 and milestone not in logged_milestones:
-                logged_milestones.add(milestone)
-                log_activity(
-                    st.session_state,
-                    "index",
-                    f"Indexing `{target['collection_name']}` reached {milestone}%",
-                    details=f"{progress.chunks_done}/{progress.chunks_total} chunks",
+            if indexable_pages:
+                pct = progress.pages_done / indexable_pages
+                progress_bar.progress(min(pct, 1.0))
+                status_text.text(
+                    f"Processed {progress.pages_done}/{indexable_pages} pages and indexed "
+                    f"{progress.chunks_done} chunks"
                 )
+                milestone = (int(pct * 100) // 25) * 25
+                if 25 <= milestone < 100 and milestone not in logged_milestones:
+                    logged_milestones.add(milestone)
+                    log_activity(
+                        st.session_state,
+                        "index",
+                        f"Indexing `{target['collection_name']}` reached {milestone}%",
+                        details=f"{progress.pages_done}/{indexable_pages} pages",
+                    )
+            else:
+                pct = progress.chunks_done / progress.chunks_total if progress.chunks_total else 0
+                progress_bar.progress(min(pct, 1.0))
+                status_text.text(f"Indexed {progress.chunks_done}/{progress.chunks_total} chunks")
+                milestone = (int(pct * 100) // 25) * 25
+                if 25 <= milestone < 100 and milestone not in logged_milestones:
+                    logged_milestones.add(milestone)
+                    log_activity(
+                        st.session_state,
+                        "index",
+                        f"Indexing `{target['collection_name']}` reached {milestone}%",
+                        details=f"{progress.chunks_done}/{progress.chunks_total} chunks",
+                    )
 
         if had_error:
             return
 
         progress_bar.progress(1.0)
-        status_text.text("Indexing complete!")
+        status_text.text(
+            f"Indexing complete. Processed {indexable_pages} pages and built the search collection."
+        )
 
         # Show collection stats
         stats = None

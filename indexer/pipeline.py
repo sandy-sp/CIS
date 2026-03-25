@@ -1,7 +1,8 @@
 """Embed cleaned company-intel page records into Qdrant."""
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Generator, Optional
+from collections import Counter
+from typing import Generator, Iterable, Optional
 
 from company_intel.models import PageRecord
 from company_intel.review import is_record_approved_for_outputs
@@ -70,6 +71,7 @@ class IndexProgress:
     chunks_total: int
     current_url: str = ""
     error: str = ""
+    pages_done: int = 0
 
 
 class IndexerPipeline:
@@ -92,21 +94,47 @@ class IndexerPipeline:
         self._storage = storage or JobStorage()
 
     def load_job_records(self, job_id: str, include_external: bool = True) -> list[PageRecord]:
+        return list(self.iter_job_records(job_id, include_external=include_external))
+
+    def iter_job_records(self, job_id: str, include_external: bool = True):
         source_type = None if include_external else "internal"
-        records = self._storage.load_page_records(job_id, source_type=source_type)
-        return [record for record in records if _is_indexable_record(record, include_external=include_external)]
+        for record in self._storage.iter_page_records(job_id, source_type=source_type):
+            if _is_indexable_record(record, include_external=include_external):
+                yield record
 
     def load_job_source_records(self, job_id: str, include_external: bool = True) -> list[PageRecord]:
         source_type = None if include_external else "internal"
-        return self._storage.load_page_records(job_id, source_type=source_type)
+        return list(self._storage.iter_page_records(job_id, source_type=source_type))
+
+    def summarize_job(self, job_id: str, include_external: bool = True) -> dict:
+        source_type = None if include_external else "internal"
+        counts = Counter()
+        indexable_pages = 0
+        for record in self._storage.iter_page_records(job_id, source_type=source_type):
+            if not _is_indexable_record(record, include_external=include_external):
+                continue
+            indexable_pages += 1
+            counts[record.page_category or "other"] += 1
+        return {
+            "indexable_pages": indexable_pages,
+            "category_counts": dict(sorted(counts.items(), key=lambda item: (-item[1], item[0]))),
+        }
+
+    def count_job_chunks(self, job_id: str, include_external: bool = True) -> int:
+        total = 0
+        for record in self.iter_job_records(job_id, include_external=include_external):
+            total += len(_page_record_to_chunks(record, job_id=job_id))
+        return total
 
     def run_job(self, job_id: str, include_external: bool = True) -> Generator[IndexProgress, None, None]:
-        records = self.load_job_records(job_id, include_external=include_external)
-        yield from self.run(page_records=records, job_id=job_id)
+        yield from self._run_iterable(
+            page_records=self.iter_job_records(job_id, include_external=include_external),
+            job_id=job_id,
+            total_chunks=0,
+        )
 
     def replace_job_collection(self, job_id: str, include_external: bool = True) -> Generator[IndexProgress, None, None]:
-        all_source_records = self.load_job_source_records(job_id, include_external=include_external)
-        for record in all_source_records:
+        for record in self.load_job_source_records(job_id, include_external=include_external):
             if record.url:
                 self._store.delete_by_url(record.url)
         yield from self.run_job(job_id, include_external=include_external)
@@ -114,43 +142,94 @@ class IndexerPipeline:
     def run(self, page_records: Optional[list[PageRecord]] = None,
             job_id: str = "") -> Generator[IndexProgress, None, None]:
         """Embed and index company-intel page records."""
-        parsed = []
-        for record in page_records or []:
-            parsed.extend(_page_record_to_chunks(record, job_id=job_id))
+        records = list(page_records or [])
+        total_chunks = sum(len(_page_record_to_chunks(record, job_id=job_id)) for record in records)
+        yield from self._run_iterable(
+            page_records=records,
+            job_id=job_id,
+            total_chunks=total_chunks,
+        )
 
-        total = len(parsed)
-
-        # Embed + upsert in batches
+    def _run_iterable(
+        self,
+        page_records: Iterable[PageRecord],
+        *,
+        job_id: str,
+        total_chunks: int,
+    ) -> Generator[IndexProgress, None, None]:
         done = 0
-        for batch_start in range(0, total, _BATCH_SIZE):
-            batch = parsed[batch_start:batch_start + _BATCH_SIZE]
-            texts = [c["text"] for c in batch]
+        pages_done = 0
+        batch: list[dict] = []
+        current_url = ""
 
-            try:
-                vectors = self.embedder.embed(texts)
-            except Exception as exc:
-                yield IndexProgress(chunks_done=done, chunks_total=total, error=str(exc))
+        for record in page_records:
+            record_chunks = _page_record_to_chunks(record, job_id=job_id)
+            if not record_chunks:
+                continue
+            current_url = record.url
+            for chunk in record_chunks:
+                batch.append(chunk)
+                if len(batch) >= _BATCH_SIZE:
+                    error = self._embed_and_upsert_batch(batch)
+                    if error:
+                        yield IndexProgress(
+                            chunks_done=done,
+                            chunks_total=total_chunks,
+                            current_url=current_url,
+                            error=error,
+                            pages_done=pages_done,
+                        )
+                        return
+                    done += len(batch)
+                    for url in {item["url"] for item in batch if item.get("url")}:
+                        self._db.mark_indexed(url, _utcnow_iso())
+                    yield IndexProgress(
+                        chunks_done=done,
+                        chunks_total=total_chunks,
+                        current_url=current_url,
+                        pages_done=pages_done,
+                    )
+                    batch = []
+            pages_done += 1
+
+        if batch:
+            error = self._embed_and_upsert_batch(batch)
+            if error:
+                yield IndexProgress(
+                    chunks_done=done,
+                    chunks_total=total_chunks,
+                    current_url=current_url,
+                    error=error,
+                    pages_done=pages_done,
+                )
                 return
-
-            chunks_for_upsert = []
-            for chunk_data, vector in zip(batch, vectors):
-                chunk_id = f"{chunk_data['url']}#{chunk_data['chunk_index']}"
-                chunks_for_upsert.append({
-                    "id": chunk_id,
-                    "vector": vector,
-                    "payload": chunk_data,
-                })
-
-            self._store.upsert(chunks_for_upsert)
-
-            # Track URLs indexed for SQLite update
-            urls_in_batch = {c["url"] for c in batch if c["url"]}
-            for url in urls_in_batch:
-                self._db.mark_indexed(url, _utcnow_iso())
-
             done += len(batch)
-            current_url = batch[-1]["url"] if batch else ""
-            yield IndexProgress(chunks_done=done, chunks_total=total, current_url=current_url)
+            for url in {item["url"] for item in batch if item.get("url")}:
+                self._db.mark_indexed(url, _utcnow_iso())
+            yield IndexProgress(
+                chunks_done=done,
+                chunks_total=total_chunks,
+                current_url=current_url,
+                pages_done=pages_done,
+            )
+
+    def _embed_and_upsert_batch(self, batch: list[dict]) -> str:
+        texts = [chunk["text"] for chunk in batch]
+        try:
+            vectors = self.embedder.embed(texts)
+        except Exception as exc:
+            return str(exc)
+
+        chunks_for_upsert = []
+        for chunk_data, vector in zip(batch, vectors):
+            chunk_id = f"{chunk_data['url']}#{chunk_data['chunk_index']}"
+            chunks_for_upsert.append({
+                "id": chunk_id,
+                "vector": vector,
+                "payload": chunk_data,
+            })
+        self._store.upsert(chunks_for_upsert)
+        return ""
 
     def get_stats(self) -> dict:
         """Return collection stats from Qdrant."""

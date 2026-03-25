@@ -173,9 +173,14 @@ class JobStorage:
 
     def load_page_records(self, job_id: str, source_type: str | None = None) -> list[PageRecord]:
         records: list[PageRecord] = []
+        for record in self.iter_page_records(job_id, source_type=source_type):
+            records.append(record)
+        return records
+
+    def iter_page_records(self, job_id: str, source_type: str | None = None):
         clean_dir = self.job_dir(job_id) / "pages" / "clean"
         if not clean_dir.exists():
-            return records
+            return
         for path in sorted(clean_dir.rglob("*.json")):
             try:
                 record = PageRecord.from_dict(_read_json_with_retry(path))
@@ -183,8 +188,7 @@ class JobStorage:
                 continue
             if source_type and record.source_type != source_type:
                 continue
-            records.append(record)
-        return records
+            yield record
 
     def append_crawl_log(self, job_id: str, entry: dict) -> None:
         path = self.crawl_log_path(job_id)
