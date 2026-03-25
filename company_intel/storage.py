@@ -232,6 +232,27 @@ class JobStorage:
     def save_worker_pid(self, job_id: str, pid: int) -> None:
         self.worker_pid_path(job_id).write_text(str(pid), encoding="utf-8")
 
+    def load_worker_pid(self, job_id: str) -> int | None:
+        path = self.worker_pid_path(job_id)
+        if not path.exists():
+            return None
+        try:
+            return int(path.read_text(encoding="utf-8").strip())
+        except Exception:
+            return None
+
+    def worker_is_running(self, job_id: str) -> bool:
+        pid = self.load_worker_pid(job_id)
+        if not pid:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
     def clear_worker_pid(self, job_id: str) -> None:
         path = self.worker_pid_path(job_id)
         if path.exists():

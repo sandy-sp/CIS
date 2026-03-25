@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import streamlit as st
@@ -44,6 +45,9 @@ def sync_active_crawl_state(state=None, storage: JobStorage | None = None) -> No
         except Exception:
             state["active_job_id"] = ""
             return
+        if job.status in _ACTIVE_JOB_STATUSES and not storage.worker_is_running(job.job_id):
+            _finalize_stale_job(job, storage)
+            job = storage.load_job(active_job_id)
         if job.status in _ACTIVE_JOB_STATUSES:
             state["selected_job_id"] = job.job_id
             return
@@ -52,10 +56,30 @@ def sync_active_crawl_state(state=None, storage: JobStorage | None = None) -> No
         return
 
     for job in storage.list_jobs():
+        if job.status in _ACTIVE_JOB_STATUSES and not storage.worker_is_running(job.job_id):
+            _finalize_stale_job(job, storage)
+            job = storage.load_job(job.job_id)
         if job.status in _ACTIVE_JOB_STATUSES:
             state["active_job_id"] = job.job_id
             state["selected_job_id"] = job.job_id
             return
+        if not state.get("selected_job_id"):
+            state["selected_job_id"] = job.job_id
+
+
+def _finalize_stale_job(job, storage: JobStorage) -> None:
+    if job.status not in _ACTIVE_JOB_STATUSES:
+        return
+    if storage.cancel_requested(job.job_id):
+        job.status = "cancelled"
+        job.warnings = sorted(set(job.warnings + ["Crawl stopped after a cancel request."]))
+        storage.clear_cancel_request(job.job_id)
+    else:
+        job.status = "failed"
+        job.errors = sorted(set(job.errors + ["Worker process stopped unexpectedly."]))
+    job.finished_at = datetime.now(tz=timezone.utc).isoformat()
+    storage.clear_worker_pid(job.job_id)
+    storage.save_job(job)
 
 
 def _preview_discovery(start_url: str, rate_limit: float) -> dict:

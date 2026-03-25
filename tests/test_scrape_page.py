@@ -14,9 +14,11 @@ def test_sync_active_crawl_state_tracks_latest_active_job(tmp_path):
     active_job = storage.create_job(CrawlSettings(start_url="https://two.example"))
     active_job.status = "crawling"
     storage.save_job(active_job)
+    storage.save_worker_pid(active_job.job_id, 12345)
 
     state = {}
-    sync_active_crawl_state(state, storage=storage)
+    with patch.object(storage, "worker_is_running", return_value=True):
+        sync_active_crawl_state(state, storage=storage)
 
     assert state["active_job_id"] == active_job.job_id
     assert state["selected_job_id"] == active_job.job_id
@@ -33,6 +35,40 @@ def test_sync_active_crawl_state_clears_finished_active_job(tmp_path):
 
     assert state["active_job_id"] == ""
     assert state["selected_job_id"] == job.job_id
+
+
+def test_sync_active_crawl_state_marks_stale_active_job_failed(tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    job.status = "crawling"
+    storage.save_job(job)
+
+    state = {}
+    with patch.object(storage, "worker_is_running", return_value=False):
+        sync_active_crawl_state(state, storage=storage)
+
+    refreshed = storage.load_job(job.job_id)
+    assert refreshed.status == "failed"
+    assert "Worker process stopped unexpectedly." in refreshed.errors
+    assert state["active_job_id"] == ""
+    assert state["selected_job_id"] == job.job_id
+
+
+def test_sync_active_crawl_state_marks_stale_cancelled_job(tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    job = storage.create_job(CrawlSettings(start_url="https://example.com"))
+    job.status = "crawling"
+    storage.save_job(job)
+    storage.request_cancel(job.job_id)
+
+    state = {}
+    with patch.object(storage, "worker_is_running", return_value=False):
+        sync_active_crawl_state(state, storage=storage)
+
+    refreshed = storage.load_job(job.job_id)
+    assert refreshed.status == "cancelled"
+    assert "cancel request" in refreshed.warnings[0].lower()
+    assert state["active_job_id"] == ""
 
 
 def test_preview_discovery_returns_count_and_source():
