@@ -99,10 +99,7 @@ def _start_job(start_url: str, max_pages: int, rate_limit: float, ignore_robots:
         start_url=start_url,
         max_pages=max_pages,
         rate_limit=rate_limit,
-        follow_external_sources=False,
         ignore_robots_exclusions=ignore_robots,
-        enable_structured_export=True,
-        enable_rag_index=False,
     )
     runner = JobRunner(storage=_STORAGE)
     job = runner.create_job(settings)

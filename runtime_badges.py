@@ -54,7 +54,7 @@ def _embedding_badge_value(settings: dict[str, Any]) -> str:
 
 def build_runtime_badges(settings: dict[str, Any]) -> list[dict[str, str]]:
     return [
-        {"label": "Scrape", "value": "Hybrid crawler"},
+        {"label": "Scrape", "value": "Static + Crawl4AI"},
         {"label": "Index", "value": _embedding_badge_value(settings)},
         {"label": "Chat", "value": _llm_badge_value(settings)},
     ]

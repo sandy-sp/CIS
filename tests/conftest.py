@@ -1,12 +1,6 @@
 import pytest
-import fakeredis
 from datetime import datetime, timezone
 from models import PageResult
-
-
-@pytest.fixture
-def fake_redis():
-    return fakeredis.FakeRedis(decode_responses=True)
 
 
 @pytest.fixture

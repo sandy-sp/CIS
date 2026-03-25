@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields as dataclass_fields
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,22 +13,26 @@ def _utcnow_iso() -> str:
     return _utcnow().isoformat()
 
 
+def _filter_dataclass_kwargs(cls, data: dict[str, Any]) -> dict[str, Any]:
+    allowed = {item.name for item in dataclass_fields(cls)}
+    return {key: value for key, value in data.items() if key in allowed}
+
+
 @dataclass
 class CrawlSettings:
     start_url: str
     max_pages: int = 500
     rate_limit: float = 1.0
-    follow_external_sources: bool = True
+    follow_external_sources: bool = False
     ignore_robots_exclusions: bool = True
     enable_structured_export: bool = True
-    enable_rag_index: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CrawlSettings":
-        return cls(**data)
+        return cls(**_filter_dataclass_kwargs(cls, dict(data)))
 
 
 @dataclass
@@ -44,12 +48,11 @@ class CrawlJob:
     pages_failed: int = 0
     pages_skipped: int = 0
     pages_blocked: int = 0
-    external_pages: int = 0
     total_words: int = 0
     llm_txt_found: bool = False
     robots_txt_found: bool = False
     seed_count: int = 0
-    seed_source: str = "hybrid"
+    seed_source: str = "discovery"
     output_dir: str = ""
     created_at: str = field(default_factory=_utcnow_iso)
     updated_at: str = field(default_factory=_utcnow_iso)
@@ -65,8 +68,8 @@ class CrawlJob:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CrawlJob":
-        payload = dict(data)
-        payload["settings"] = CrawlSettings.from_dict(payload["settings"])
+        payload = _filter_dataclass_kwargs(cls, dict(data))
+        payload["settings"] = CrawlSettings.from_dict(dict(data.get("settings") or {}))
         return cls(**payload)
 
 

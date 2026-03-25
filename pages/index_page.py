@@ -81,7 +81,6 @@ def _ensure_index_state() -> None:
         "indexed_targets": [],
         "selected_job_id": "",
         "active_rag_target_id": "",
-        "collection_name": "",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -142,7 +141,6 @@ def _remember_index_target(target: dict) -> None:
     targets[target["target_id"]] = target
     st.session_state.indexed_targets = list(targets.values())
     st.session_state.active_rag_target_id = target["target_id"]
-    st.session_state.collection_name = target["collection_name"]
     if target.get("job_id"):
         st.session_state.selected_job_id = target["job_id"]
 

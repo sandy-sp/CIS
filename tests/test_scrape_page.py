@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from company_intel.models import CrawlSettings
 from company_intel.storage import JobStorage
-from pages.scrape_page import _preview_discovery, sync_active_crawl_state
+from pages.scrape_page import _preview_discovery, _start_job, sync_active_crawl_state
 
 
 def test_sync_active_crawl_state_tracks_latest_active_job(tmp_path):
@@ -91,3 +91,24 @@ def test_preview_discovery_returns_count_and_source():
     assert preview["robots_txt_found"] is True
     assert preview["llm_txt_found"] is False
     assert preview["sample_urls"][0] == "https://example.com/"
+
+
+def test_start_job_uses_scrape_first_defaults(monkeypatch, tmp_path):
+    storage = JobStorage(base_dir=tmp_path / "jobs")
+    captured = {}
+
+    def fake_create_job(self, settings):
+        captured["settings"] = settings
+        return storage.create_job(settings)
+
+    monkeypatch.setattr("pages.scrape_page._STORAGE", storage)
+    monkeypatch.setattr("pages.scrape_page.JobRunner.create_job", fake_create_job)
+    monkeypatch.setattr("pages.scrape_page.launch_worker", lambda job_id, storage=None: 12345)
+
+    job_id = _start_job("https://example.com", 250, 0.5, ignore_robots=False)
+
+    assert job_id
+    assert captured["settings"].follow_external_sources is False
+    assert captured["settings"].enable_structured_export is True
+    assert not hasattr(captured["settings"], "enable_rag_index")
+    assert captured["settings"].ignore_robots_exclusions is False

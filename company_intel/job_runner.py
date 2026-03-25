@@ -1,31 +1,21 @@
 from __future__ import annotations
 
 import asyncio
-import os
-from queue import Queue
 from datetime import datetime, timezone
 from urllib.parse import urldefrag, urljoin, urlparse
 
-import redis
 from bs4 import BeautifulSoup
 
-from app_settings import SettingsStore, default_ollama_url
 from company_intel.classifier import PageClassifier
 from company_intel.cleaner import CorpusCleaner
 from company_intel.exporter import IntelExporter
 from company_intel.extractor import UniversalExtractor
 from company_intel.models import CrawlJob, CrawlSettings, PageRecord
 from company_intel.review import filter_records_for_outputs
-from company_intel.storage import JobStorage, collection_name_for_job
-from indexer.embedder import Embedder
-from indexer.pipeline import IndexerPipeline, _is_indexable_record
-from indexer.registry import IndexRegistry
+from company_intel.storage import JobStorage
 from scraper.page_probe import EngineRouter
 from scraper.site_crawler import SiteCrawler
 from scraper.snooper import Snooper
-
-
-QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 
 
 def _strip_frontmatter(markdown: str) -> str:
@@ -37,14 +27,8 @@ def _strip_frontmatter(markdown: str) -> str:
 
 
 class JobRunner:
-    def __init__(self, redis_url: str = "redis://localhost:6379",
-                 storage: JobStorage | None = None,
-                 qdrant_url: str = QDRANT_URL,
-                 index_registry: IndexRegistry | None = None):
-        self.redis_url = redis_url
+    def __init__(self, storage: JobStorage | None = None):
         self.storage = storage or JobStorage()
-        self.qdrant_url = qdrant_url
-        self.index_registry = index_registry or IndexRegistry()
         self.classifier = PageClassifier()
         self.cleaner = CorpusCleaner()
         self.extractor = UniversalExtractor()
@@ -65,21 +49,10 @@ class JobRunner:
         self.storage.save_job(job)
         return job
 
-    def run(self, job_id: str, result_queue: Queue | None = None, cancel_flag: list | None = None) -> None:
-        asyncio.run(self._run(job_id, result_queue=result_queue, cancel_flag=cancel_flag or []))
+    def run(self, job_id: str) -> None:
+        asyncio.run(self._run(job_id))
 
-    @staticmethod
-    def _emit_job_update(result_queue: Queue | None, job: CrawlJob) -> None:
-        if result_queue:
-            result_queue.put({"type": "job", "job": job.to_dict()})
-
-    @staticmethod
-    def _emit_complete(result_queue: Queue | None, job: CrawlJob) -> None:
-        if result_queue:
-            result_queue.put({"type": "complete", "job": job.to_dict()})
-
-    async def _run(self, job_id: str, result_queue: Queue | None = None, cancel_flag: list | None = None) -> None:
-        cancel_flag = cancel_flag or []
+    async def _run(self, job_id: str) -> None:
         job = self.storage.load_job(job_id)
         self.storage.clear_cancel_request(job_id)
         resume_records = self.storage.load_page_records(job_id)
@@ -98,7 +71,6 @@ class JobRunner:
 
             job.status = "discovering"
             self.storage.save_job(job)
-            self._emit_job_update(result_queue, job)
 
             snooper = Snooper(job.settings.start_url, default_delay=job.settings.rate_limit)
             snooper.load_robots()
@@ -123,7 +95,6 @@ class JobRunner:
 
             job.status = "crawling"
             self.storage.save_job(job)
-            self._emit_job_update(result_queue, job)
             crawler = SiteCrawler(
                 snooper,
                 max_pages=job.settings.max_pages,
@@ -136,7 +107,7 @@ class JobRunner:
 
             async for result in crawler.crawl(
                 crawl_seed_urls,
-                cancel_requested=lambda: bool(cancel_flag) or self.storage.cancel_requested(job_id),
+                cancel_requested=lambda: self.storage.cancel_requested(job_id),
             ):
                 record = self._build_record(job, result)
                 self.storage.save_page_record(job.job_id, record)
@@ -144,14 +115,8 @@ class JobRunner:
                 self._update_job_counts(job, record)
                 self.storage.save_job(job)
                 self.storage.append_crawl_log(job_id, self._log_entry(record))
-                if result_queue:
-                    result_queue.put({
-                        "type": "page",
-                        "job": job.to_dict(),
-                        "record": record.to_dict(),
-                    })
 
-            if cancel_flag or self.storage.cancel_requested(job_id):
+            if self.storage.cancel_requested(job_id):
                 job.status = "cancelled"
                 job.finished_at = datetime.now(tz=timezone.utc).isoformat()
                 self.storage.save_job(job)
@@ -160,12 +125,10 @@ class JobRunner:
                     "level": "warning",
                     "message": "Crawl cancelled",
                 })
-                self._emit_complete(result_queue, job)
                 return
 
             job.status = "processing"
             self.storage.save_job(job)
-            self._emit_job_update(result_queue, job)
             internal_records = self.storage.load_page_records(job.job_id, source_type="internal")
             internal_records = [record for record in internal_records if record.status == "success"]
             internal_records = self.cleaner.remove_template_lines(internal_records)
@@ -185,7 +148,6 @@ class JobRunner:
                 "level": "success",
                 "message": "Crawl completed",
             })
-            self._emit_complete(result_queue, job)
         except Exception as exc:
             job.status = "failed"
             job.finished_at = datetime.now(tz=timezone.utc).isoformat()
@@ -196,7 +158,6 @@ class JobRunner:
                 "level": "error",
                 "message": str(exc),
             })
-            self._emit_complete(result_queue, job)
             raise
         finally:
             self.storage.clear_cancel_request(job_id)
@@ -346,91 +307,3 @@ class JobRunner:
             "words": record.word_count,
             "reason": skip_reason,
         }
-
-    def _prepare_live_index(self, job: CrawlJob) -> tuple[IndexerPipeline | None, dict | None, str]:
-        settings = SettingsStore().load()
-        backend = settings.get("embedding_backend", "ollama")
-        api_key = settings.get("embedding_api_key", "") if backend == "openai" else ""
-        if backend == "openai" and not api_key:
-            return None, None, "Live RAG indexing skipped: OpenAI embedding backend is selected but no API key is configured."
-
-        try:
-            embedder = Embedder(
-                backend=backend,
-                api_key=api_key or None,
-                model=settings.get("embedding_model", "") or None,
-                ollama_url=settings.get("ollama_url", default_ollama_url()),
-            )
-            embedder.health_check()
-        except Exception as exc:
-            return None, None, f"Live RAG indexing skipped: {exc}"
-
-        collection_name = collection_name_for_job(
-            job.job_id,
-            job.domain,
-            include_external=job.settings.follow_external_sources,
-        )
-        target = {
-            "target_id": f"job:{job.job_id}:{'full' if job.settings.follow_external_sources else 'internal'}",
-            "label": f"{job.domain} ({'internal + external' if job.settings.follow_external_sources else 'internal only'})",
-            "collection_name": collection_name,
-            "source_kind": "company_job",
-            "job_id": job.job_id,
-            "domain": job.domain,
-            "include_external": job.settings.follow_external_sources,
-            "embedding_backend": backend,
-            "embedding_model": getattr(embedder, "_model_name", ""),
-            "embedding_ollama_url": settings.get("ollama_url", default_ollama_url()) if backend == "ollama" else "",
-            "dimensions": embedder.dimensions,
-        }
-        self.index_registry.save_target(target)
-        pipeline = IndexerPipeline(
-            collection_name=collection_name,
-            embedder=embedder,
-            qdrant_url=self.qdrant_url,
-            storage=self.storage,
-        )
-        return pipeline, target, ""
-
-    def _index_live_records(self, pipeline: IndexerPipeline, job: CrawlJob, records: list[PageRecord]) -> str:
-        indexable = [
-            record for record in records
-            if _is_indexable_record(record, include_external=False) and record.source_type == "internal"
-        ]
-        if not indexable:
-            return ""
-        for progress in pipeline.run(page_records=indexable, job_id=job.job_id):
-            if progress.error:
-                return f"Live RAG indexing disabled during crawl: {progress.error}"
-        return ""
-
-    def _finalize_live_index(self, job: CrawlJob, pipeline: IndexerPipeline, target: dict) -> str:
-        for progress in pipeline.replace_job_collection(
-            job.job_id,
-            include_external=job.settings.follow_external_sources,
-        ):
-            if progress.error:
-                return f"Final RAG collection refresh failed: {progress.error}"
-        try:
-            stats = pipeline.get_stats()
-        except Exception:
-            stats = {}
-        refreshed_target = dict(target)
-        if stats:
-            refreshed_target["stats"] = stats
-        self.index_registry.save_target(refreshed_target)
-        return ""
-
-    def _get_redis_client(self):
-        try:
-            client = redis.from_url(self.redis_url, decode_responses=True)
-            client.ping()
-            return client
-        except Exception:
-            try:
-                import fakeredis
-            except Exception as exc:
-                raise RuntimeError(
-                    "Redis is unavailable and fakeredis is not installed. Start Redis or install fakeredis."
-                ) from exc
-            return fakeredis.FakeRedis(decode_responses=True)
