@@ -77,6 +77,7 @@ For local Python runs:
 - scrape and export work without indexing
 - Index and Chat require a reachable Ollama and Qdrant, or alternate provider settings in the app
 - `.env.example` uses host-local defaults; Docker Compose injects service URLs automatically inside containers
+- local development still uses `docker compose up --build`; Docker Hub publishing is only for release automation
 
 ## Typical Workflow
 
@@ -143,6 +144,35 @@ Common settings:
 - `benchmarks/` is optional internal QA tooling for extractor tuning. It is not required for normal scraping.
 - Local runtime files under `data/` are ignored by git.
 - Docker and app defaults are chosen for a self-contained local workflow first.
+
+## Docker Publishing
+
+The repo includes a Docker Hub publish workflow at [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml).
+
+Required GitHub secrets:
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+Optional GitHub repository variable:
+
+- `DOCKERHUB_REPOSITORY`
+  - expected format: `<namespace>/<image>`
+  - if unset, the workflow publishes to `docker.io/<DOCKERHUB_USERNAME>/cis`
+
+Image tags produced by the workflow:
+
+- `latest` on pushes to `main`
+- `sha-<shortsha>` on every publish run
+- the Git tag value itself on version tags like `v0.1.0`
+
+## Release
+
+For a public image release:
+
+1. make sure Docker Hub secrets and variables are configured
+2. merge to `main` for a fresh `latest` image
+3. push a version tag like `v0.1.0` to publish a matching versioned image
 
 ## Development
 
