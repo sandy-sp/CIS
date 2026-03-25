@@ -65,7 +65,7 @@ def jobs_page() -> None:
             launch_worker(resumed.job_id, storage=_STORAGE)
             st.session_state.active_job_id = resumed.job_id
             st.session_state.selected_job_id = resumed.job_id
-            st.session_state.current_page = "Scrape"
+            st.session_state.next_page = "Scrape"
             st.rerun()
 
     excel_path = _STORAGE.job_dir(selected_job_id) / "exports" / "intel.xlsx"

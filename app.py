@@ -28,6 +28,12 @@ def _inject_app_styles() -> None:
     )
 
 
+def _apply_pending_navigation(state, pages: dict[str, object]) -> None:
+    target = str(state.pop("next_page", "") or "").strip()
+    if target in pages:
+        state["current_page"] = target
+
+
 def main() -> None:
     st.set_page_config(
         page_title="Company Intelligence Scraper",
@@ -36,13 +42,14 @@ def main() -> None:
     )
     _inject_app_styles()
     sync_active_crawl_state(st.session_state)
-    if "current_page" not in st.session_state:
-        st.session_state.current_page = "Scrape"
 
     pages = {
         "Scrape": scrape_page,
         "Jobs": jobs_page,
     }
+    if "current_page" not in st.session_state:
+        st.session_state.current_page = "Scrape"
+    _apply_pending_navigation(st.session_state, pages)
 
     with st.sidebar:
         st.caption("Workspace")

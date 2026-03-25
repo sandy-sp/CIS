@@ -294,7 +294,7 @@ def scrape_page() -> None:
                     job_id = _resume_job(selected_job["job_id"])
                     st.session_state.active_job_id = job_id
                     st.session_state.selected_job_id = job_id
-                    st.session_state.current_page = "Scrape"
+                    st.session_state.next_page = "Scrape"
                     st.rerun()
         else:
             st.info("No active crawl job. Open the Jobs page to inspect saved runs and downloads.")
