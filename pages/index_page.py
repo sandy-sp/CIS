@@ -7,7 +7,12 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from activity_log import log_activity
-from app_settings import default_ollama_url, embedding_model_defaults, ensure_session_settings
+from app_settings import (
+    default_ollama_url,
+    embedding_model_defaults,
+    ensure_session_settings,
+    standalone_container_runtime_hint,
+)
 from company_intel.storage import JobStorage, collection_name_for_job
 from indexer.embedder import Embedder
 from indexer.pipeline import IndexerPipeline, _is_indexable_record
@@ -150,6 +155,9 @@ def index_page() -> None:
     st.title("Index")
     st.caption("Turn a completed crawl into a searchable knowledge base for retrieval and chat.")
     st.info("Recommended path: use the bundled Ollama embedding model in Docker. OpenAI and local sentence-transformer models remain optional.")
+    docker_hint = standalone_container_runtime_hint()
+    if docker_hint:
+        st.info(docker_hint)
     settings = ensure_session_settings(st.session_state)
 
     completed_jobs = _STORAGE.list_jobs(status="completed")
@@ -284,6 +292,8 @@ def index_page() -> None:
         if not qdrant_status.reachable:
             details = f": {qdrant_status.error}" if qdrant_status.error else "."
             st.error(f"Qdrant is unavailable at `{QDRANT_URL}`{details}")
+            if docker_hint:
+                st.info(docker_hint)
             return
         embedder_backend = backend
         embedder = Embedder(

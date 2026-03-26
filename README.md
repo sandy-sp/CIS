@@ -75,6 +75,8 @@ docker run --rm \
 
 Then open `http://localhost:8501`.
 
+Docker images do not auto-publish host ports. For `docker run`, host port mapping is always explicit via `-p`.
+
 App-only usage is enough for:
 
 - `Scrape`
@@ -93,14 +95,16 @@ docker compose -f docker-compose.dockerhub.yml up -d
 This starts:
 
 - the CIS app on `http://localhost:8501`
-- Qdrant for post-scrape indexing
-- Ollama plus the one-time model bootstrap step
+- Qdrant on `http://localhost:6333`
+- Ollama on `http://localhost:11434` plus the one-time model bootstrap step
 
 Persistence paths:
 
 - CIS job data: named volume at `/app/data`
 - Qdrant data: named volume at `/qdrant/storage`
 - Ollama model data: named volume at `/root/.ollama`
+
+If you only run the CIS app container, `Scrape` and `Jobs` work, but `Index`, `Chat`, and bundled model checks stay unavailable until you also run Ollama and Qdrant.
 
 ### Local Python
 

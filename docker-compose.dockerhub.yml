@@ -19,12 +19,16 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
+    ports:
+      - "6333:6333"
     volumes:
       - qdrant_storage:/qdrant/storage
 
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    ports:
+      - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:

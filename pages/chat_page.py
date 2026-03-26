@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from activity_log import log_activity
-from app_settings import default_ollama_url, ensure_session_settings
+from app_settings import default_ollama_url, ensure_session_settings, standalone_container_runtime_hint
 from chat.generator import Generator
 from chat.retriever import Retriever
 from company_intel.storage import JobStorage
@@ -319,6 +319,9 @@ def chat_page() -> None:
 
     st.title("Chat")
     st.caption("Ask questions against an indexed company-intel corpus.")
+    docker_hint = standalone_container_runtime_hint()
+    if docker_hint:
+        st.info(docker_hint)
 
     # --- Settings from session (set by settings page) ---
     settings = ensure_session_settings(st.session_state)
@@ -360,6 +363,8 @@ def chat_page() -> None:
         st.error(f"Qdrant is unavailable at `{QDRANT_URL}`. Chat requires Qdrant to load indexed corpora.")
         if qdrant_status.error:
             st.caption(f"Qdrant error: {qdrant_status.error}")
+        if docker_hint:
+            st.info(docker_hint)
         return
     if collection_state == STATE_MISSING:
         st.error(

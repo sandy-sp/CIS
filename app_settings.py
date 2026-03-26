@@ -24,6 +24,40 @@ def default_ollama_url() -> str:
     return os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
 
+def running_in_container() -> bool:
+    override = os.environ.get("CIS_CONTAINERIZED", "").strip()
+    if override == "1":
+        return True
+    if override == "0":
+        return False
+    return Path("/.dockerenv").exists()
+
+
+def docker_runtime_mode() -> str:
+    if not running_in_container():
+        return "host"
+
+    ollama_url = os.environ.get("OLLAMA_URL", "").strip().rstrip("/")
+    qdrant_url = os.environ.get("QDRANT_URL", "").strip().rstrip("/")
+
+    if not ollama_url and not qdrant_url:
+        return "standalone"
+    if ollama_url == "http://ollama:11434" and qdrant_url == "http://qdrant:6333":
+        return "full_stack"
+    return "custom"
+
+
+def standalone_container_runtime_hint() -> str:
+    if docker_runtime_mode() != "standalone":
+        return ""
+    return (
+        "This CIS container is running by itself. Scrape and Jobs work in this mode, "
+        "but Index and Chat require Ollama and Qdrant. Start the full stack with "
+        "`docker compose -f docker-compose.dockerhub.yml up -d`, or run the app container "
+        "with `OLLAMA_URL` and `QDRANT_URL` pointed at external services."
+    )
+
+
 def llm_model_defaults() -> dict[str, str]:
     return {
         "ollama": os.environ.get("APP_DEFAULT_OLLAMA_LLM_MODEL", "qwen3:4b-instruct"),

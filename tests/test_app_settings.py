@@ -1,6 +1,12 @@
 import json
 
-from app_settings import SettingsStore, default_settings, ensure_session_settings
+from app_settings import (
+    SettingsStore,
+    default_settings,
+    docker_runtime_mode,
+    ensure_session_settings,
+    standalone_container_runtime_hint,
+)
 
 
 def test_settings_store_save_and_load(tmp_path):
@@ -75,3 +81,30 @@ def test_default_settings_respects_env(monkeypatch):
     assert settings["llm_model"] == "qwen3:4b-instruct"
     assert settings["embedding_model"] == "nomic-embed-text"
     assert settings["embedding_backend"] == "ollama"
+
+
+def test_docker_runtime_mode_detects_standalone_container(monkeypatch):
+    monkeypatch.setenv("CIS_CONTAINERIZED", "1")
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+
+    assert docker_runtime_mode() == "standalone"
+    assert "docker-compose.dockerhub.yml" in standalone_container_runtime_hint()
+
+
+def test_docker_runtime_mode_detects_full_stack_container(monkeypatch):
+    monkeypatch.setenv("CIS_CONTAINERIZED", "1")
+    monkeypatch.setenv("OLLAMA_URL", "http://ollama:11434")
+    monkeypatch.setenv("QDRANT_URL", "http://qdrant:6333")
+
+    assert docker_runtime_mode() == "full_stack"
+    assert standalone_container_runtime_hint() == ""
+
+
+def test_docker_runtime_mode_detects_host_runtime(monkeypatch):
+    monkeypatch.setenv("CIS_CONTAINERIZED", "0")
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+
+    assert docker_runtime_mode() == "host"
+    assert standalone_container_runtime_hint() == ""

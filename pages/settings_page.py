@@ -9,6 +9,7 @@ from app_settings import (
     embedding_model_defaults,
     ensure_session_settings,
     llm_model_defaults,
+    standalone_container_runtime_hint,
 )
 from chat.generator import Generator
 from indexer.embedder import Embedder
@@ -165,6 +166,9 @@ def settings_page() -> None:
     st.title("Settings")
     st.caption("Choose the models used for indexing and chat. The default Docker path uses bundled Ollama for both.")
     st.caption("Saved locally in `data/app_settings.json` on this machine.")
+    docker_hint = standalone_container_runtime_hint()
+    if docker_hint:
+        st.info(docker_hint)
 
     # --- Load current settings ---
     s = ensure_session_settings(st.session_state, store=_SETTINGS_STORE)
