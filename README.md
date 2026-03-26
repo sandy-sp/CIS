@@ -60,6 +60,47 @@ Notes:
 - first startup can take a while because the Ollama models need to download
 - scrape and export are the primary path
 - Index and Chat are available after the services are up
+- local source-based Docker development still uses [docker-compose.yml](docker-compose.yml)
+
+### Docker Hub Image
+
+App-only run:
+
+```bash
+docker run --rm \
+  -p 8501:8501 \
+  -v cis_data:/app/data \
+  docker.io/<namespace>/cis:latest
+```
+
+Then open `http://localhost:8501`.
+
+App-only usage is enough for:
+
+- `Scrape`
+- `Jobs`
+- `Settings`
+
+`Index` and `Chat` require Qdrant and Ollama.
+
+Recommended full stack from Docker Hub:
+
+```bash
+CIS_IMAGE=docker.io/<namespace>/cis:latest \
+docker compose -f docker-compose.dockerhub.yml up -d
+```
+
+This starts:
+
+- the CIS app on `http://localhost:8501`
+- Qdrant for post-scrape indexing
+- Ollama plus the one-time model bootstrap step
+
+Persistence paths:
+
+- CIS job data: named volume at `/app/data`
+- Qdrant data: named volume at `/qdrant/storage`
+- Ollama model data: named volume at `/root/.ollama`
 
 ### Local Python
 
@@ -78,6 +119,8 @@ For local Python runs:
 - Index and Chat require a reachable Ollama and Qdrant, or alternate provider settings in the app
 - `.env.example` uses host-local defaults; Docker Compose injects service URLs automatically inside containers
 - local development still uses `docker compose up --build`; Docker Hub publishing is only for release automation
+
+If you want host-directory persistence instead of named volumes, mount a local directory to `/app/data`.
 
 ## Typical Workflow
 
@@ -165,6 +208,11 @@ Image tags produced by the workflow:
 - `latest` on pushes to `main`
 - `sha-<shortsha>` on every publish run
 - the Git tag value itself on version tags like `v0.1.0`
+
+Public Docker runtime files:
+
+- source-build development stack: [docker-compose.yml](docker-compose.yml)
+- pull-and-run Docker Hub stack: [docker-compose.dockerhub.yml](docker-compose.dockerhub.yml)
 
 ## Releases
 

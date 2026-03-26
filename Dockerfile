@@ -31,9 +31,10 @@ RUN python -m playwright install --with-deps chromium
 
 COPY . .
 
-RUN mkdir -p /app/output
+RUN mkdir -p /app/data
 
 EXPOSE 8501
+VOLUME ["/app/data"]
 
 ENTRYPOINT ["streamlit", "run", "app.py", \
     "--server.address", "0.0.0.0", \
