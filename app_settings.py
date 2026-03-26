@@ -21,7 +21,21 @@ _ALLOWED_KEYS = {
 
 
 def default_ollama_url() -> str:
-    return os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    explicit = os.environ.get("OLLAMA_URL", "").strip()
+    if explicit:
+        return explicit
+    if running_in_container():
+        return "http://host.docker.internal:11434"
+    return "http://localhost:11434"
+
+
+def default_qdrant_url() -> str:
+    explicit = os.environ.get("QDRANT_URL", "").strip()
+    if explicit:
+        return explicit
+    if running_in_container():
+        return "http://host.docker.internal:6333"
+    return "http://localhost:6333"
 
 
 def running_in_container() -> bool:

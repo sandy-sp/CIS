@@ -77,6 +77,19 @@ Then open `http://localhost:8501`.
 
 Docker images do not auto-publish host ports. For `docker run`, host port mapping is always explicit via `-p`.
 
+Standalone container defaults:
+
+- Streamlit is served on `8501`
+- Ollama defaults to `http://host.docker.internal:11434`
+- Qdrant defaults to `http://host.docker.internal:6333`
+
+That means a single CIS app container can connect to host-published Ollama and Qdrant services if they are already running.
+On Linux `docker run`, add:
+
+```bash
+--add-host=host.docker.internal:host-gateway
+```
+
 App-only usage is enough for:
 
 - `Scrape`
@@ -105,6 +118,7 @@ Persistence paths:
 - Ollama model data: named volume at `/root/.ollama`
 
 If you only run the CIS app container, `Scrape` and `Jobs` work, but `Index`, `Chat`, and bundled model checks stay unavailable until you also run Ollama and Qdrant.
+If Ollama and Qdrant are already running on the host or in separate port-published containers, the standalone CIS container can use them through `host.docker.internal`.
 
 ### Local Python
 

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import streamlit as st
 
 from activity_log import log_activity
-from app_settings import default_ollama_url, ensure_session_settings, standalone_container_runtime_hint
+from app_settings import default_ollama_url, default_qdrant_url, ensure_session_settings, standalone_container_runtime_hint
 from chat.generator import Generator
 from chat.retriever import Retriever
 from company_intel.storage import JobStorage
@@ -22,7 +22,7 @@ from indexer.qdrant_status import (
 from indexer.registry import IndexRegistry
 
 
-QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_URL = default_qdrant_url()
 _STORAGE = JobStorage()
 _REGISTRY = IndexRegistry()
 _DISPLAY_TIMEZONE = os.environ.get("APP_TIMEZONE") or os.environ.get("TZ") or "America/New_York"

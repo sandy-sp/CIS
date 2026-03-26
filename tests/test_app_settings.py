@@ -3,6 +3,8 @@ import json
 from app_settings import (
     SettingsStore,
     default_settings,
+    default_ollama_url,
+    default_qdrant_url,
     docker_runtime_mode,
     ensure_session_settings,
     standalone_container_runtime_hint,
@@ -89,6 +91,8 @@ def test_docker_runtime_mode_detects_standalone_container(monkeypatch):
     monkeypatch.delenv("QDRANT_URL", raising=False)
 
     assert docker_runtime_mode() == "standalone"
+    assert default_ollama_url() == "http://host.docker.internal:11434"
+    assert default_qdrant_url() == "http://host.docker.internal:6333"
     assert "docker-compose.dockerhub.yml" in standalone_container_runtime_hint()
 
 
@@ -107,4 +111,6 @@ def test_docker_runtime_mode_detects_host_runtime(monkeypatch):
     monkeypatch.delenv("QDRANT_URL", raising=False)
 
     assert docker_runtime_mode() == "host"
+    assert default_ollama_url() == "http://localhost:11434"
+    assert default_qdrant_url() == "http://localhost:6333"
     assert standalone_container_runtime_hint() == ""

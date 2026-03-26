@@ -12,6 +12,8 @@ import os
 from collections.abc import Callable
 from typing import Optional
 
+from app_settings import default_ollama_url
+
 
 _RAG_SYSTEM_PROMPT = """You are a company intelligence assistant.
 
@@ -44,7 +46,7 @@ class Generator:
 
         self.backend = backend
         self.api_key = api_key
-        self.ollama_url = ollama_url or os.environ.get("OLLAMA_URL", "http://localhost:11434")
+        self.ollama_url = ollama_url or default_ollama_url()
         self._model = model or self._default_model(backend)
         self._ollama_client = None
 

@@ -2,6 +2,11 @@ services:
   app:
     image: ${CIS_IMAGE:-docker.io/your-dockerhub-username/cis:latest}
     restart: unless-stopped
+    depends_on:
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_started
     environment:
       - OLLAMA_URL=http://ollama:11434
       - QDRANT_URL=http://qdrant:6333
@@ -14,6 +19,8 @@ services:
       - "8501:8501"
     volumes:
       - cis_data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     stop_grace_period: 15s
 
   qdrant:
@@ -47,6 +54,8 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     entrypoint: ["python", "scripts/bootstrap_ollama_models.py"]
 
 volumes:

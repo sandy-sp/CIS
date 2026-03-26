@@ -9,6 +9,7 @@ import streamlit as st
 from activity_log import log_activity
 from app_settings import (
     default_ollama_url,
+    default_qdrant_url,
     embedding_model_defaults,
     ensure_session_settings,
     standalone_container_runtime_hint,
@@ -26,7 +27,7 @@ from indexer.qdrant_status import (
 from indexer.registry import IndexRegistry
 
 
-QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_URL = default_qdrant_url()
 _STORAGE = JobStorage()
 _REGISTRY = IndexRegistry()
 _DISPLAY_TIMEZONE = os.environ.get("APP_TIMEZONE") or os.environ.get("TZ") or "America/New_York"
