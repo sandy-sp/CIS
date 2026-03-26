@@ -1,0 +1,119 @@
+name: GitHub Release
+
+"on":
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing version tag to release, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Resolve release tag
+        id: release_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag_name }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          case "${tag}" in
+            v*) ;;
+            *)
+              echo "Release tags must start with v" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.release_tag.outputs.tag }}
+
+      - name: Resolve Docker Hub repository
+        id: image
+        env:
+          DOCKERHUB_REPOSITORY: ${{ vars.DOCKERHUB_REPOSITORY }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          if [ -n "${DOCKERHUB_REPOSITORY}" ]; then
+            repository="${DOCKERHUB_REPOSITORY}"
+          elif [ -n "${DOCKERHUB_USERNAME}" ]; then
+            repository="${DOCKERHUB_USERNAME}/cis"
+          else
+            echo "DOCKERHUB_USERNAME secret or DOCKERHUB_REPOSITORY variable must be set." >&2
+            exit 1
+          fi
+
+          echo "repository=${repository}" >> "${GITHUB_OUTPUT}"
+          echo "image=docker.io/${repository}:${{ steps.release_tag.outputs.tag }}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare release assets
+        id: assets
+        run: |
+          asset_dir="${RUNNER_TEMP}/cis-release-${{ steps.release_tag.outputs.tag }}"
+          mkdir -p "${asset_dir}"
+          cp README.md docker-compose.yml .env.example "${asset_dir}/"
+
+          metadata_path="${asset_dir}/release-metadata.json"
+          cat > "${metadata_path}" <<EOF
+          {
+            "project": "CIS",
+            "tag": "${{ steps.release_tag.outputs.tag }}",
+            "docker_image": "${{ steps.image.outputs.image }}",
+            "distribution": [
+              "source repo",
+              "docker image",
+              "GitHub Releases"
+            ]
+          }
+          EOF
+
+          bundle_path="${RUNNER_TEMP}/cis-release-${{ steps.release_tag.outputs.tag }}.tar.gz"
+          tar -czf "${bundle_path}" -C "${asset_dir}" README.md docker-compose.yml .env.example release-metadata.json
+
+          notes_path="${RUNNER_TEMP}/release-preface.md"
+          cat > "${notes_path}" <<EOF
+          Recommended distribution path: Docker.
+
+          Docker image for this release:
+          \`${{ steps.image.outputs.image }}\`
+
+          Included release assets:
+          - GitHub source archives
+          - \`cis-release-${{ steps.release_tag.outputs.tag }}.tar.gz\`
+          - \`release-metadata.json\`
+
+          CIS is intentionally not published as a Python package. Distribution is via the source repo, Docker image, and GitHub Releases.
+          EOF
+
+          echo "bundle=${bundle_path}" >> "${GITHUB_OUTPUT}"
+          echo "metadata=${metadata_path}" >> "${GITHUB_OUTPUT}"
+          echo "notes=${notes_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: CIS ${{ steps.release_tag.outputs.tag }}
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          generate_release_notes: true
+          body_path: ${{ steps.assets.outputs.notes }}
+          files: |
+            ${{ steps.assets.outputs.bundle }}
+            ${{ steps.assets.outputs.metadata }}
+          prerelease: ${{ contains(steps.release_tag.outputs.tag, '-') }}

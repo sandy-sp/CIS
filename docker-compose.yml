@@ -14,7 +14,6 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./output:/app/output
       - ./data:/app/data
     stop_grace_period: 15s
 

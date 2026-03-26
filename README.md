@@ -166,13 +166,27 @@ Image tags produced by the workflow:
 - `sha-<shortsha>` on every publish run
 - the Git tag value itself on version tags like `v0.1.0`
 
-## Release
+## Releases
 
-For a public image release:
+Release tags such as `v0.1.0` drive the public release flow:
+
+1. push a version tag like `v0.1.0`
+2. publish the matching Docker image tag to Docker Hub
+3. create a GitHub Release for the same tag
+
+Recommended user path: Docker.
+
+CIS is intentionally not published as a Python package. The release artifacts are:
+
+- the source repository
+- the Docker image
+- GitHub Releases and source archives
+
+For a public release:
 
 1. make sure Docker Hub secrets and variables are configured
-2. merge to `main` for a fresh `latest` image
-3. push a version tag like `v0.1.0` to publish a matching versioned image
+2. merge to `main` when you want to refresh `latest`
+3. push a version tag like `v0.1.0` for a versioned image and GitHub Release
 
 ## Development
 
